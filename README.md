@@ -128,7 +128,7 @@ graph TB
     style ChatUI fill:#FFB6C1
     style Dashboard fill:#FFE4B5
 ```
-
+### 🧩 (Find Partner Flow)
 ```mermaid
 graph LR
     Dashboard((Dashboard)) --> ClickFind[User: Click 'Find Partner']
@@ -167,6 +167,7 @@ graph LR
     CreateRoom --> Connected((Connected))
 ```
 
+### 🧩 (Admin Flow)
 ```mermaid
 graph TB
     Start((Start)) --> Dashboard[Dashboard]
@@ -334,7 +335,7 @@ graph TB
     style QuizFlow fill:#DDA0DD
     style Dashboard fill:#FFE4B5
 ```
-
+### 🧩 (Video Call Flow)
 ```mermaid
 graph LR
     Start((Start)) --> InitCall[Actor A: Click Video Call]
