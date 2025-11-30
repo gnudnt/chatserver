@@ -1,8 +1,4 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+// This is your Prisma schema file
 
 generator client {
   provider = "prisma-client-js"
@@ -13,30 +9,74 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
+// ==============================
+// 1. ENUMS (Chuẩn hóa dữ liệu)
+// ==============================
 
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+enum RoleName {
+  USER
+  ADMIN
+  MODERATOR
+}
 
-// generator client {
-//   provider = "prisma-client"
-//   output   = "../generated/prisma"
-// }
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  PREFER_NOT_TO_SAY
+}
 
-// datasource db {
-//   provider = "postgresql"
-// }
+enum MatchStatus {
+  ACTIVE
+  UNMATCHED
+}
 
-// generator client {
-//   provider = "prisma-client-js"
-// }
+enum CallType {
+  AUDIO
+  VIDEO
+}
+
+enum ConnectionStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+enum PostStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum ModerationAction {
+  WARN
+  BAN
+  MUTE
+  DELETE_CONTENT
+  NONE
+}
+
+enum ModerationStatus {
+  PENDING
+  RESOLVED
+  DISMISSED
+}
+
+enum ContentType {
+  TEXT
+  IMAGE
+  FILE
+}
+
+// ==============================
+// 2. CORE USER & AUTH
+// ==============================
 
 model Role {
-  rolesId   String   @id @default(uuid()) @map("roles_id") @db.Uuid
-  rolesname String   @map("rolesname") @db.VarChar(255)
+  id        String   @id @default(uuid()) @map("role_id") @db.Uuid
+  name      RoleName @unique @map("role_name")
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamp
-  updatedAt DateTime @default(now())
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamp
 
   users User[]
 
@@ -44,50 +84,48 @@ model Role {
 }
 
 model User {
-  usersId         String    @id @default(uuid()) @map("users_id") @db.Uuid
+  id              String    @id @default(uuid()) @map("user_id") @db.Uuid
   email           String    @unique @db.VarChar(255)
   password        String    @db.VarChar(255)
-  active          Boolean   @default(true)
-  rolesId         String    @map("roles_id") @db.Uuid
+  isActive        Boolean   @default(true) @map("active")
+  roleId          String    @map("role_id") @db.Uuid
   emailVerifiedAt DateTime? @map("email_verified_at") @db.Timestamp
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamp
-  updatedAt       DateTime? @map("update_at") @db.Timestamp
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamp
 
-  // Relations
-  role        Role         @relation(fields: [rolesId], references: [rolesId])
+  // Relations: Auth & Profile
+  role        Role         @relation(fields: [roleId], references: [id])
   profile     Profile?
   verifyCodes VerifyCode[]
 
-  // Swipe Relations
-  swipesMade     SwipeQuet[] @relation("Swiper")
-  swipesReceived SwipeQuet[] @relation("Target")
+  // Relations: Actions
+  swipesMade     Swipe[] @relation("Swiper")
+  swipesReceived Swipe[] @relation("Target")
 
-  // Match Relations
   matchesAsUser1 Match[] @relation("MatchUser1")
   matchesAsUser2 Match[] @relation("MatchUser2")
 
-  // Message & Call Relations
   messagesSent   Message[] @relation("MessageSender")
+  
   callsInitiated Call[]    @relation("Caller")
   callsReceived  Call[]    @relation("Recipient")
   callsEnded     Call[]    @relation("CallEnder")
 
-  // Community Relations
+  // Relations: Community
   posts      CommunityPost[] @relation("PostAuthor")
   adminPosts CommunityPost[] @relation("PostAdmin")
   comments   Comment[]
 
-  // Connection Request Relations
   requestsSent     ConnectionRequest[] @relation("RequestFrom")
   requestsReceived ConnectionRequest[] @relation("RequestTo")
 
-  // Moderation Relations
+  // Relations: Moderation
   moderationsTarget   Moderation[]    @relation("ModTarget")
   moderationsReported Moderation[]    @relation("ModReporter")
   moderationsReviewed Moderation[]    @relation("ModReviewer")
   moderationLogs      ModerationLog[] @relation("ModLogAdmin")
 
-  // Notification & Stats
+  // Relations: System
   notifications Notification[]
   studySlots    UserStudySlot[]
   styleStats    UserStyleStats[]
@@ -97,107 +135,115 @@ model User {
 }
 
 model VerifyCode {
-  verifyCodeId String    @id @default(uuid()) @map("verify_code_id") @db.Uuid
-  usersId      String    @map("users_id") @db.Uuid
-  type         String    @db.VarChar(255)
-  code         String?   @db.VarChar(6)
-  usedAt       DateTime? @map("used_at") @db.Timestamp
-  expiredAt    DateTime  @map("expired_at") @db.Timestamp
-  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamp
+  id        String    @id @default(uuid()) @map("verify_code_id") @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  type      String    @db.VarChar(50) // e.g., "REGISTER", "RESET_PASSWORD"
+  code      String    @db.VarChar(10)
+  usedAt    DateTime? @map("used_at") @db.Timestamp
+  expiredAt DateTime  @map("expired_at") @db.Timestamp
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamp
 
-  user User @relation(fields: [usersId], references: [usersId])
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@map("verify_code")
+  @@map("verify_codes")
 }
 
+// ==============================
+// 3. TAGS & LOOKUP TABLES
+// ==============================
+
 model TagSubject {
-  tagSubjectId String @id @default(uuid()) @map("tag_subject_id") @db.Uuid
-  code         String @db.VarChar(255)
-  name         String @db.VarChar(255)
+  id   String @id @default(uuid()) @map("tag_subject_id") @db.Uuid
+  code String @unique @db.VarChar(50)
+  name String @db.VarChar(255)
 
   profiles Profile[]
 
-  @@map("tag_subject")
+  @@map("tag_subjects")
 }
 
 model TagLevel {
-  tagLevelId String @id @default(uuid()) @map("tag_level_id") @db.Uuid
-  code       String @db.VarChar(255)
-  name       String @db.VarChar(255)
+  id   String @id @default(uuid()) @map("tag_level_id") @db.Uuid
+  code String @unique @db.VarChar(50)
+  name String @db.VarChar(255)
 
   profiles Profile[]
 
-  @@map("tag_level")
+  @@map("tag_levels")
 }
 
 model TagStudyStyle {
-  tagStudyStyleId String @id @default(uuid()) @map("tag_studystyle_id") @db.Uuid
-  code            String @db.VarChar(255)
-  name            String @db.VarChar(255)
+  id   String @id @default(uuid()) @map("tag_studystyle_id") @db.Uuid
+  code String @unique @db.VarChar(50)
+  name String @db.VarChar(255)
 
   profiles  Profile[]
   userStats UserStyleStats[]
 
-  @@map("tag_studystyle")
+  @@map("tag_study_styles")
 }
 
 model TagLearningGoal {
-  tagLearningGoalId String @id @default(uuid()) @map("tag_learninggoal_id") @db.Uuid
-  code              String @db.VarChar(255)
-  name              String @db.VarChar(255)
+  id   String @id @default(uuid()) @map("tag_learninggoal_id") @db.Uuid
+  code String @unique @db.VarChar(50)
+  name String @db.VarChar(255)
 
   profiles  Profile[]
   userStats UserGoalStats[]
 
-  @@map("tag_learninggoal")
+  @@map("tag_learning_goals")
 }
 
 model TagGender {
-  tagGenderId String @id @default(uuid()) @map("tag_gender_id") @db.Uuid
-  code        String @db.VarChar(255)
-  name        String @db.VarChar(255)
+  id   String @id @default(uuid()) @map("tag_gender_id") @db.Uuid
+  code String @unique @db.VarChar(50)
+  name String @db.VarChar(255)
 
   profiles Profile[]
 
-  @@map("tag_gender")
+  @@map("tag_genders")
 }
 
 model TagStudyDay {
-  tagStudyDayId String @id @default(uuid()) @map("tag_studyday_id") @db.Uuid
-  code          String @db.VarChar(255)
-  name          String @db.VarChar(255)
+  id   String @id @default(uuid()) @map("tag_studyday_id") @db.Uuid
+  code String @unique @db.VarChar(50)
+  name String @db.VarChar(255)
 
   profiles  Profile[]
   userSlots UserStudySlot[]
 
-  @@map("tag_studyday")
+  @@map("tag_study_days")
 }
 
 model TagStudyTime {
-  tagStudyTimeId String @id @default(uuid()) @map("tag_studytime_id") @db.Uuid
-  code           String @db.VarChar(255)
-  name           String @db.VarChar(255)
+  id   String @id @default(uuid()) @map("tag_studytime_id") @db.Uuid
+  code String @unique @db.VarChar(50)
+  name String @db.VarChar(255)
 
   profiles  Profile[]
   userSlots UserStudySlot[]
 
-  @@map("tag_studytime")
+  @@map("tag_study_times")
 }
 
+// ==============================
+// 4. PROFILE
+// ==============================
+
 model Profile {
-  profilesId        String   @id @default(uuid()) @map("profiles_id") @db.Uuid
-  usersId           String   @unique @map("users_id") @db.Uuid
-  usernameCode      String   @unique @map("username_code") @db.VarChar(255)
+  id                String   @id @default(uuid()) @map("profile_id") @db.Uuid
+  userId            String   @unique @map("user_id") @db.Uuid
+  usernameCode      String   @unique @map("username_code") @db.VarChar(50)
   username          String   @map("username") @db.VarChar(255)
   avatarUrl         String?  @map("avatar_url") @db.VarChar(255)
   profilePictureUrl String?  @map("profile_picture_url") @db.VarChar(255)
-  gender            String   @map("gender") @db.VarChar(255)
+  gender            Gender   @default(PREFER_NOT_TO_SAY)
   birthday          DateTime @db.Date
-  bio               String?  @db.VarChar(255)
+  bio               String?  @db.Text
   school            String?  @db.VarChar(255)
   achievement       String?  @db.Text
 
-  // Tag Foreign Keys
+  // Tags Foreign Keys
   tagLevelId        String  @map("tag_level_id") @db.Uuid
   tagSubjectId      String  @map("tag_subject_id") @db.Uuid
   tagLearningGoalId String? @map("tag_learninggoal_id") @db.Uuid
@@ -207,57 +253,63 @@ model Profile {
   tagStudyStyleId   String? @map("tag_studystyle_id") @db.Uuid
 
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamp
-  updatedAt DateTime? @map("update_at") @db.Timestamp
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamp
 
   // Relations
-  user            User             @relation(fields: [usersId], references: [usersId])
-  tagLevel        TagLevel         @relation(fields: [tagLevelId], references: [tagLevelId])
-  tagSubject      TagSubject       @relation(fields: [tagSubjectId], references: [tagSubjectId])
-  tagLearningGoal TagLearningGoal? @relation(fields: [tagLearningGoalId], references: [tagLearningGoalId])
-  tagStudyDay     TagStudyDay?     @relation(fields: [tagStudyDayId], references: [tagStudyDayId])
-  tagStudyTime    TagStudyTime?    @relation(fields: [tagStudyTimeId], references: [tagStudyTimeId])
-  tagGender       TagGender?       @relation(fields: [tagGenderId], references: [tagGenderId])
-  tagStudyStyle   TagStudyStyle?   @relation(fields: [tagStudyStyleId], references: [tagStudyStyleId])
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tagLevel        TagLevel         @relation(fields: [tagLevelId], references: [id])
+  tagSubject      TagSubject       @relation(fields: [tagSubjectId], references: [id])
+  tagLearningGoal TagLearningGoal? @relation(fields: [tagLearningGoalId], references: [id])
+  tagStudyDay     TagStudyDay?     @relation(fields: [tagStudyDayId], references: [id])
+  tagStudyTime    TagStudyTime?    @relation(fields: [tagStudyTimeId], references: [id])
+  tagGender       TagGender?       @relation(fields: [tagGenderId], references: [id])
+  tagStudyStyle   TagStudyStyle?   @relation(fields: [tagStudyStyleId], references: [id])
 
   @@map("profiles")
 }
 
-model SwipeQuet {
-  swipeId   String    @id @default(uuid()) @map("swipe_id") @db.Uuid
+// ==============================
+// 5. MATCHING & SWIPING
+// ==============================
+
+model Swipe {
+  id        String    @id @default(uuid()) @map("swipe_id") @db.Uuid
   swiperId  String    @map("swiper_id") @db.Uuid
   targetId  String    @map("target_id") @db.Uuid
-  like      Boolean
+  isLike    Boolean   @map("is_like")
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamp
-  updatedAt DateTime? @map("update_at") @db.Timestamp
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamp
 
-  swiper User @relation("Swiper", fields: [swiperId], references: [usersId])
-  target User @relation("Target", fields: [targetId], references: [usersId])
+  swiper User @relation("Swiper", fields: [swiperId], references: [id], onDelete: Cascade)
+  target User @relation("Target", fields: [targetId], references: [id], onDelete: Cascade)
 
   matchesAsSwipe1 Match[] @relation("MatchSwipe1")
   matchesAsSwipe2 Match[] @relation("MatchSwipe2")
 
   @@unique([swiperId, targetId])
-  @@map("swipe_quet")
+  @@map("swipes")
 }
 
 model Match {
-  matchId   String    @id @default(uuid()) @map("match_id") @db.Uuid
-  requestId String    @map("request_id") @db.Uuid
-  user1Id   String    @map("user1_id") @db.Uuid
-  user2Id   String    @map("user2_id") @db.Uuid
-  status    String    @default("active") @db.VarChar(255)
-  swipe1Id  String    @map("swipe1_id") @db.Uuid
-  swipe2Id  String    @map("swipe2_id") @db.Uuid
-  matchAt   DateTime  @map("match_at") @db.Timestamp
+  id        String      @id @default(uuid()) @map("match_id") @db.Uuid
+  requestId String?     @map("request_id") @db.Uuid // Nullable if matched via swipe
+  user1Id   String      @map("user1_id") @db.Uuid
+  user2Id   String      @map("user2_id") @db.Uuid
+  status    MatchStatus @default(ACTIVE)
+  
+  swipe1Id  String?     @map("swipe1_id") @db.Uuid
+  swipe2Id  String?     @map("swipe2_id") @db.Uuid
+  
+  matchedAt DateTime  @default(now()) @map("matched_at") @db.Timestamp
   endAt     DateTime? @map("end_at") @db.Timestamp
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamp
-  updatedAt DateTime? @map("update_at") @db.Timestamp
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamp
 
-  request ConnectionRequest @relation(fields: [requestId], references: [requestId])
-  user1   User              @relation("MatchUser1", fields: [user1Id], references: [usersId])
-  user2   User              @relation("MatchUser2", fields: [user2Id], references: [usersId])
-  swipe1  SwipeQuet         @relation("MatchSwipe1", fields: [swipe1Id], references: [swipeId])
-  swipe2  SwipeQuet         @relation("MatchSwipe2", fields: [swipe2Id], references: [swipeId])
+  request ConnectionRequest? @relation(fields: [requestId], references: [id])
+  user1   User              @relation("MatchUser1", fields: [user1Id], references: [id], onDelete: Cascade)
+  user2   User              @relation("MatchUser2", fields: [user2Id], references: [id], onDelete: Cascade)
+  swipe1  Swipe?            @relation("MatchSwipe1", fields: [swipe1Id], references: [id])
+  swipe2  Swipe?            @relation("MatchSwipe2", fields: [swipe2Id], references: [id])
 
   conversations Conversation[]
   notifications Notification[]
@@ -266,17 +318,22 @@ model Match {
   @@map("matches")
 }
 
-model Conversation {
-  conversationsId String    @id @default(uuid()) @map("conversations_id") @db.Uuid
-  matchId         String    @map("match_id") @db.Uuid
-  status          String    @default("open") @db.VarChar(255)
-  endAt           DateTime? @map("end_at") @db.Timestamp
-  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamp
-  lastMessagesId  String?   @unique @map("last_messages_id") @db.Uuid
-  lastMessagesAt  DateTime? @map("last_messages_at") @db.Timestamp
+// ==============================
+// 6. COMMUNICATION (CHAT & CALL)
+// ==============================
 
-  match       Match    @relation(fields: [matchId], references: [matchId])
-  lastMessage Message? @relation("LastMessage", fields: [lastMessagesId], references: [messagesId]) // 1-1 nullable
+model Conversation {
+  id             String    @id @default(uuid()) @map("conversation_id") @db.Uuid
+  matchId        String    @map("match_id") @db.Uuid
+  status         String    @default("OPEN") @db.VarChar(50)
+  endAt          DateTime? @map("end_at") @db.Timestamp
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamp
+  
+  lastMessageId  String?   @unique @map("last_message_id") @db.Uuid
+  lastMessageAt  DateTime? @map("last_message_at") @db.Timestamp
+
+  match       Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  lastMessage Message? @relation("LastMessage", fields: [lastMessageId], references: [id])
 
   messages Message[] @relation("ConversationMessages")
   calls    Call[]
@@ -285,26 +342,29 @@ model Conversation {
 }
 
 model Message {
-  messagesId      String    @id @default(uuid()) @map("messages_id") @db.Uuid
-  senderId        String    @map("sender_id") @db.Uuid
-  conversationsId String    @map("conversations_id") @db.Uuid
-  callId          String?   @map("call_id") @db.Uuid
-  type            String    @db.VarChar(255)
-  text            String?   @db.VarChar(255)
-  fileName        String?   @map("file_name") @db.VarChar(255)
-  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamp
-  updatedAt       DateTime? @map("update_at") @db.Timestamp
-  replyToId       String?   @db.Uuid
-  editedAt        DateTime? @map("edited_at") @db.Timestamp
-  readAt          DateTime? @map("read_at") @db.Timestamp
-  isDeleter       Boolean   @default(false) @map("is_deleter")
+  id             String      @id @default(uuid()) @map("message_id") @db.Uuid
+  senderId       String      @map("sender_id") @db.Uuid
+  conversationId String      @map("conversation_id") @db.Uuid
+  callId         String?     @map("call_id") @db.Uuid
+  
+  type           ContentType @default(TEXT)
+  text           String?     @db.Text
+  fileName       String?     @map("file_name") @db.VarChar(255)
+  
+  replyToId      String?     @map("reply_to_id") @db.Uuid
+  isDeleted      Boolean     @default(false) @map("is_deleted")
+  
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamp
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamp
+  readAt         DateTime? @map("read_at") @db.Timestamp
+  editedAt       DateTime? @map("edited_at") @db.Timestamp
 
-  sender       User         @relation("MessageSender", fields: [senderId], references: [usersId])
-  conversation Conversation @relation("ConversationMessages", fields: [conversationsId], references: [conversationsId])
-  call         Call?        @relation(fields: [callId], references: [callId])
+  sender       User         @relation("MessageSender", fields: [senderId], references: [id])
+  conversation Conversation @relation("ConversationMessages", fields: [conversationId], references: [id], onDelete: Cascade)
+  call         Call?        @relation(fields: [callId], references: [id])
 
   // Self relation for Reply
-  replyTo Message?  @relation("ReplyRelation", fields: [replyToId], references: [messagesId])
+  replyTo Message?  @relation("ReplyRelation", fields: [replyToId], references: [id])
   replies Message[] @relation("ReplyRelation")
 
   // Relation for Conversation.lastMessage
@@ -317,58 +377,65 @@ model Message {
 }
 
 model Attachment {
-  attachmentsId String    @id @default(uuid()) @map("attachments_id") @db.Uuid
-  messagesId    String    @map("messages_id") @db.Uuid
-  postId        String    @map("post_id") @db.Uuid
-  fileUrl       String    @map("file_url") @db.VarChar(255)
-  fileName      String?   @map("file_name") @db.VarChar(255)
-  fileMime      String?   @map("file_mime") @db.VarChar(255)
-  fileSize      Int?      @map("file_size")
-  endAt         DateTime? @map("end_at") @db.Timestamp
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamp
+  id        String    @id @default(uuid()) @map("attachment_id") @db.Uuid
+  messageId String?   @map("message_id") @db.Uuid
+  postId    String?   @map("post_id") @db.Uuid
+  fileUrl   String    @map("file_url") @db.VarChar(255)
+  fileName  String?   @map("file_name") @db.VarChar(255)
+  fileMime  String?   @map("file_mime") @db.VarChar(100)
+  fileSize  Int?      @map("file_size")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamp
 
-  message Message       @relation(fields: [messagesId], references: [messagesId])
-  post    CommunityPost @relation(fields: [postId], references: [postId])
+  message Message?       @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  post    CommunityPost? @relation(fields: [postId], references: [id], onDelete: Cascade)
 
   @@map("attachments")
 }
 
 model Call {
-  callId          String    @id @default(uuid()) @map("call_id") @db.Uuid
-  conversationsId String    @map("conversations_id") @db.Uuid
-  callerId        String    @map("caller_id") @db.Uuid
-  recipentId      String    @map("recipent_id") @db.Uuid
-  callType        String    @default("audio") @map("call_type") @db.VarChar(255)
-  status          String    @default("đang kết nối") @db.VarChar(255)
-  acceptedAt      DateTime? @map("accepted_at") @db.Timestamp
-  endAt           DateTime? @map("end_at") @db.Timestamp
-  endBy           String?   @map("end_by") @db.Uuid
-  duration        DateTime? @db.Timestamp // Note: Type timestamp for duration is unusual, usually Int (seconds) or Interval. Keeping as per schema.
-  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamp
+  id             String    @id @default(uuid()) @map("call_id") @db.Uuid
+  conversationId String    @map("conversation_id") @db.Uuid
+  callerId       String    @map("caller_id") @db.Uuid
+  recipientId    String    @map("recipient_id") @db.Uuid
+  
+  callType       CallType  @default(AUDIO) @map("call_type")
+  status         String    @default("CONNECTING") @db.VarChar(50)
+  
+  acceptedAt     DateTime? @map("accepted_at") @db.Timestamp
+  endedAt        DateTime? @map("ended_at") @db.Timestamp
+  duration       Int?      @map("duration") // Seconds
+  endedById      String?   @map("ended_by_id") @db.Uuid
+  
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamp
 
-  conversation Conversation @relation(fields: [conversationsId], references: [conversationsId])
-  caller       User         @relation("Caller", fields: [callerId], references: [usersId])
-  recipient    User         @relation("Recipient", fields: [recipentId], references: [usersId])
-  ender        User?        @relation("CallEnder", fields: [endBy], references: [usersId])
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  caller       User         @relation("Caller", fields: [callerId], references: [id])
+  recipient    User         @relation("Recipient", fields: [recipientId], references: [id])
+  ender        User?        @relation("CallEnder", fields: [endedById], references: [id])
 
   messages Message[]
 
   @@map("calls")
 }
 
+// ==============================
+// 7. COMMUNITY
+// ==============================
+
 model CommunityPost {
-  postId      String    @id @default(uuid()) @map("post_id") @db.Uuid
-  userId      String    @map("user_id") @db.Uuid
-  adminId     String    @map("admin_id") @db.Uuid
-  post        String    @db.Text
-  status      String    @default("draft") @db.VarChar(255)
+  id          String     @id @default(uuid()) @map("post_id") @db.Uuid
+  userId      String     @map("user_id") @db.Uuid
+  adminId     String?    @map("admin_id") @db.Uuid // Nullable, as not all posts need admin review immediately
+  content     String     @map("content") @db.Text
+  status      PostStatus @default(DRAFT)
+  
   submittedAt DateTime? @map("submitted_at") @db.Timestamp
   reviewedAt  DateTime? @map("reviewed_at") @db.Timestamp
-  publishAt   DateTime? @map("publish_at") @db.Timestamp
+  publishedAt DateTime? @map("published_at") @db.Timestamp
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamp
 
-  author User @relation("PostAuthor", fields: [userId], references: [usersId])
-  admin  User @relation("PostAdmin", fields: [adminId], references: [usersId])
+  author User  @relation("PostAuthor", fields: [userId], references: [id], onDelete: Cascade)
+  admin  User? @relation("PostAdmin", fields: [adminId], references: [id])
 
   comments      Comment[]
   requests      ConnectionRequest[]
@@ -376,167 +443,187 @@ model CommunityPost {
   moderations   Moderation[]
   notifications Notification[]
 
-  @@map("community_post")
+  @@map("community_posts")
 }
 
 model Comment {
-  commentId String    @id @default(uuid()) @map("comment_id") @db.Uuid
+  id        String    @id @default(uuid()) @map("comment_id") @db.Uuid
   userId    String    @map("user_id") @db.Uuid
   postId    String    @map("post_id") @db.Uuid
-  comment   String    @db.Text
-  status    String    @default("active") @db.VarChar(255)
-  deleteAt  DateTime? @map("delete_at") @db.Timestamp
+  content   String    @db.Text
+  isDeleted Boolean   @default(false) @map("is_deleted")
+  deletedAt DateTime? @map("deleted_at") @db.Timestamp
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamp
 
-  user        User          @relation(fields: [userId], references: [usersId])
-  post        CommunityPost @relation(fields: [postId], references: [postId])
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post        CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
   moderations Moderation[]
 
-  @@map("comment")
+  @@map("comments")
 }
 
 model ConnectionRequest {
-  requestId  String    @id @default(uuid()) @map("request_id") @db.Uuid
-  postId     String    @map("post_id") @db.Uuid
-  fromUserId String    @map("from_user_id") @db.Uuid
-  toUserId   String    @map("to_user_id") @db.Uuid
-  message    String?   @db.Text
-  status     String    @default("pending") @db.VarChar(255)
-  acceptedAt DateTime? @map("accepted_at") @db.Timestamp
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamp
+  id         String           @id @default(uuid()) @map("request_id") @db.Uuid
+  postId     String           @map("post_id") @db.Uuid
+  fromUserId String           @map("from_user_id") @db.Uuid
+  toUserId   String           @map("to_user_id") @db.Uuid
+  message    String?          @db.Text
+  status     ConnectionStatus @default(PENDING)
+  acceptedAt DateTime?        @map("accepted_at") @db.Timestamp
+  createdAt  DateTime         @default(now()) @map("created_at") @db.Timestamp
 
-  post     CommunityPost @relation(fields: [postId], references: [postId])
-  fromUser User          @relation("RequestFrom", fields: [fromUserId], references: [usersId])
-  toUser   User          @relation("RequestTo", fields: [toUserId], references: [usersId])
+  post     CommunityPost @relation(fields: [postId], references: [id])
+  fromUser User          @relation("RequestFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUser   User          @relation("RequestTo", fields: [toUserId], references: [id], onDelete: Cascade)
 
   matches       Match[]
   notifications Notification[]
 
-  @@map("connection_request")
+  @@map("connection_requests")
 }
 
+// ==============================
+// 8. MODERATION & SAFETY
+// ==============================
+
 model ViolationKeyword {
-  wordId    String   @id @default(uuid()) @map("word_id") @db.Uuid
-  wordText  String   @map("word_text") @db.VarChar(255)
+  id        String   @id @default(uuid()) @map("word_id") @db.Uuid
+  text      String   @unique @map("word_text") @db.VarChar(255)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamp
 
   moderations Moderation[]
 
-  @@map("violation_keyword")
+  @@map("violation_keywords")
 }
 
 model Moderation {
-  moderationId   String    @id @default(uuid()) @map("moderation_id") @db.Uuid
-  type           String    @db.VarChar(255)
-  source         String    @db.VarChar(255)
-  messageId      String?   @map("message_id") @db.Uuid
-  commentId      String?   @map("comment_id") @db.Uuid
-  postId         String?   @map("post_id") @db.Uuid
-  targetId       String    @map("target_id") @db.Uuid
-  reporterId     String?   @map("reporter_id") @db.Uuid
-  wordId         String?   @map("word_id") @db.Uuid
-  reason         String?   @db.VarChar(255)
-  action         String    @default("warn") @db.VarChar(255)
-  status         String    @db.VarChar(255)
-  updateAt       DateTime  @default(now()) @map("update_at") @db.Timestamp
-  reviewerId     String?   @map("reviewer_id") @db.Uuid
-  reviewAt       DateTime? @map("review_at") @db.Timestamp
-  countViolation Int       @map("count_violation")
-  startAt        DateTime  @default(now()) @map("start_at") @db.Timestamp
-  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamp
+  id             String           @id @default(uuid()) @map("moderation_id") @db.Uuid
+  type           String           @db.VarChar(50) // e.g. "SPAM", "HATE_SPEECH"
+  source         String           @db.VarChar(50) // "USER_REPORT", "SYSTEM_SCAN"
+  
+  targetId       String           @map("target_id") @db.Uuid
+  reporterId     String?          @map("reporter_id") @db.Uuid
+  reviewerId     String?          @map("reviewer_id") @db.Uuid
+  
+  // Polymorphic References (Nullable)
+  messageId      String?          @map("message_id") @db.Uuid
+  commentId      String?          @map("comment_id") @db.Uuid
+  postId         String?          @map("post_id") @db.Uuid
+  violationWordId String?         @map("word_id") @db.Uuid
 
-  message  Message?          @relation(fields: [messageId], references: [messagesId])
-  comment  Comment?          @relation(fields: [commentId], references: [commentId])
-  post     CommunityPost?    @relation(fields: [postId], references: [postId])
-  target   User              @relation("ModTarget", fields: [targetId], references: [usersId])
-  reporter User?             @relation("ModReporter", fields: [reporterId], references: [usersId])
-  word     ViolationKeyword? @relation(fields: [wordId], references: [wordId])
-  reviewer User?             @relation("ModReviewer", fields: [reviewerId], references: [usersId])
+  reason         String?          @db.Text
+  action         ModerationAction @default(NONE)
+  status         ModerationStatus @default(PENDING)
+  
+  violationCount Int              @default(1) @map("violation_count")
+  reviewedAt     DateTime?        @map("reviewed_at") @db.Timestamp
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamp
+  updatedAt      DateTime         @updatedAt @map("updated_at") @db.Timestamp
+
+  // Relations
+  target   User              @relation("ModTarget", fields: [targetId], references: [id])
+  reporter User?             @relation("ModReporter", fields: [reporterId], references: [id])
+  reviewer User?             @relation("ModReviewer", fields: [reviewerId], references: [id])
+  
+  message  Message?          @relation(fields: [messageId], references: [id])
+  comment  Comment?          @relation(fields: [commentId], references: [id])
+  post     CommunityPost?    @relation(fields: [postId], references: [id])
+  word     ViolationKeyword? @relation(fields: [violationWordId], references: [id])
 
   logs          ModerationLog[]
   notifications Notification[]
 
-  @@map("moderation")
+  @@map("moderations")
+}
+
+model ModerationLog {
+  id           String           @id @default(uuid()) @map("log_id") @db.Uuid
+  moderationId String           @map("moderation_id") @db.Uuid
+  adminId      String           @map("admin_id") @db.Uuid
+  action       ModerationAction 
+  note         String?          @db.Text
+  createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamp
+
+  moderation Moderation @relation(fields: [moderationId], references: [id], onDelete: Cascade)
+  admin      User       @relation("ModLogAdmin", fields: [adminId], references: [id])
+
+  @@map("moderation_logs")
 }
 
 model Notification {
-  notiId      String    @id @default(uuid()) @map("noti_id") @db.Uuid
+  id          String    @id @default(uuid()) @map("noti_id") @db.Uuid
   userId      String    @map("user_id") @db.Uuid
-  notice      String    @db.Text
-  type        String    @db.VarChar(255)
+  content     String    @db.Text
+  type        String    @db.VarChar(50) // e.g. "MATCH", "MESSAGE", "SYSTEM"
+  
+  // Reference IDs (Nullable)
   matchId     String?   @map("match_id") @db.Uuid
   requestId   String?   @map("request_id") @db.Uuid
-  violationId String?   @map("violation_id") @db.Uuid
   postId      String?   @map("post_id") @db.Uuid
+  moderationId String?  @map("moderation_id") @db.Uuid
+  
   isRead      Boolean   @default(false) @map("is_read")
   readAt      DateTime? @map("read_at") @db.Timestamp
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamp
 
-  user      User               @relation(fields: [userId], references: [usersId])
-  match     Match?             @relation(fields: [matchId], references: [matchId])
-  request   ConnectionRequest? @relation(fields: [requestId], references: [requestId])
-  violation Moderation?        @relation(fields: [violationId], references: [moderationId])
-  post      CommunityPost?     @relation(fields: [postId], references: [postId])
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  match     Match?             @relation(fields: [matchId], references: [id])
+  request   ConnectionRequest? @relation(fields: [requestId], references: [id])
+  post      CommunityPost?     @relation(fields: [postId], references: [id])
+  violation Moderation?        @relation(fields: [moderationId], references: [id])
 
-  @@map("notification")
+  @@map("notifications")
 }
 
-model ModerationLog {
-  moderationLogId String   @id @default(uuid()) @map("moderation_log_id") @db.Uuid
-  moderationId    String   @map("moderation_id") @db.Uuid
-  adminId         String   @map("admin_id") @db.Uuid
-  action          String   @db.VarChar(255) // approve, reject, ban, unban, hide, delete
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamp
-
-  moderation Moderation @relation(fields: [moderationId], references: [moderationId])
-  admin      User       @relation("ModLogAdmin", fields: [adminId], references: [usersId])
-
-  @@map("moderation_log")
-}
+// ==============================
+// 9. STATISTICS & METRICS
+// ==============================
 
 model UserStudySlot {
-  userStudySlotId String   @id @default(uuid()) @map("user_study_slot_id") @db.Uuid
-  usersId         String   @map("users_id") @db.Uuid
-  tagStudyDayId   String   @map("tag_studyday_id") @db.Uuid
-  tagStudyTimeId  String   @map("tag_studytime_id") @db.Uuid
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamp
+  id             String   @id @default(uuid()) @map("slot_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  tagStudyDayId  String   @map("tag_studyday_id") @db.Uuid
+  tagStudyTimeId String   @map("tag_studytime_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamp
 
-  user         User         @relation(fields: [usersId], references: [usersId])
-  tagStudyDay  TagStudyDay  @relation(fields: [tagStudyDayId], references: [tagStudyDayId])
-  tagStudyTime TagStudyTime @relation(fields: [tagStudyTimeId], references: [tagStudyTimeId])
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tagStudyDay  TagStudyDay  @relation(fields: [tagStudyDayId], references: [id])
+  tagStudyTime TagStudyTime @relation(fields: [tagStudyTimeId], references: [id])
 
-  @@unique([usersId, tagStudyDayId, tagStudyTimeId])
-  @@map("user_study_slot")
+  @@unique([userId, tagStudyDayId, tagStudyTimeId])
+  @@map("user_study_slots")
 }
 
 model UserStyleStats {
-  userStyleStatsId String   @id @default(uuid()) @map("user_style_stats_id") @db.Uuid
-  usersId          String   @map("users_id") @db.Uuid
-  tagStudyStyleId  String   @map("tag_studystyle_id") @db.Uuid
-  seenCount        Int      @default(0) @map("seen_count")
-  likeCount        Int      @default(0) @map("like_count")
-  likeRate         Float?   @map("like_rate")
-  updatedAt        DateTime @default(now()) @map("updated_at") @db.Timestamp
+  id              String   @id @default(uuid()) @map("stat_id") @db.Uuid
+  userId          String   @map("user_id") @db.Uuid
+  tagStudyStyleId String   @map("tag_studystyle_id") @db.Uuid
+  
+  seenCount       Int      @default(0) @map("seen_count")
+  likeCount       Int      @default(0) @map("like_count")
+  likeRate        Float?   @map("like_rate")
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamp
 
-  user          User          @relation(fields: [usersId], references: [usersId])
-  tagStudyStyle TagStudyStyle @relation(fields: [tagStudyStyleId], references: [tagStudyStyleId])
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tagStudyStyle TagStudyStyle @relation(fields: [tagStudyStyleId], references: [id])
 
-  @@unique([usersId, tagStudyStyleId])
+  @@unique([userId, tagStudyStyleId])
   @@map("user_style_stats")
 }
 
 model UserGoalStats {
-  userGoalStatsId   String   @id @default(uuid()) @map("user_goal_stats_id") @db.Uuid
-  usersId           String   @map("users_id") @db.Uuid
+  id                String   @id @default(uuid()) @map("stat_id") @db.Uuid
+  userId            String   @map("user_id") @db.Uuid
   tagLearningGoalId String   @map("tag_learninggoal_id") @db.Uuid
+  
   seenCount         Int      @default(0) @map("seen_count")
   likeCount         Int      @default(0) @map("like_count")
   likeRate          Float?   @map("like_rate")
-  updatedAt         DateTime @default(now()) @map("updated_at") @db.Timestamp
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamp
 
-  user            User            @relation(fields: [usersId], references: [usersId])
-  tagLearningGoal TagLearningGoal @relation(fields: [tagLearningGoalId], references: [tagLearningGoalId])
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tagLearningGoal TagLearningGoal @relation(fields: [tagLearningGoalId], references: [id])
 
-  @@unique([usersId, tagLearningGoalId])
+  @@unique([userId, tagLearningGoalId])
   @@map("user_goal_stats")
 }
