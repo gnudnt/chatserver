@@ -468,6 +468,11 @@ JWT_SECRET=my_super_secret
 ```
 
 ### 4. Chạy ứng dụng
+```bash 
+# tạo DB ở docker
+docker compose up -d
+```
+
 ```bash
 # Development
 npm run start:dev

@@ -36,6 +36,7 @@ model Role {
   rolesId   String   @id @default(uuid()) @map("roles_id") @db.Uuid
   rolesname String   @map("rolesname") @db.VarChar(255)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamp
+  updatedAt DateTime @default(now())
 
   users User[]
 
