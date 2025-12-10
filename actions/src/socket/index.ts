@@ -9,14 +9,14 @@ import cors from "cors";
 import MessageModel from "../models/Message";
 import ConversationModel from "../models/Conversation";
 import conversationRouter from "../routes/conversations";
-import { upload } from "../middleware/upload"; 
+import { upload } from "../middleware/upload";
 
 dotenv.config({ path: path.join(__dirname, "../../.env") });
 
 const app = express();
 app.use(express.json());
 
-// ⭐ ENABLE CORS CHO NEXT.JS
+// CORS 
 app.use(
   cors({
     origin: process.env.FRONTEND_URL || "http://localhost:3000",
@@ -24,21 +24,18 @@ app.use(
   })
 );
 
-// ⭐ CHUẨN HÓA PATH UPLOAD (KHÔNG BAO GIỜ SAI)
+// Static uploads
 const uploadsPath = path.join(process.cwd(), "actions", "uploads");
 console.log("📁 STATIC UPLOAD PATH:", uploadsPath);
-
-// ⭐ PHỤC VỤ FILE TỪ uploads
 app.use("/uploads", express.static(uploadsPath));
 
-// ⭐ API UPLOAD
+// API upload file
 app.post("/api/upload", upload.single("file"), (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: "No file uploaded" });
   }
 
   const fileUrl = `/uploads/${req.file.filename}`;
-
   console.log("📸 File saved:", fileUrl);
 
   return res.json({ url: fileUrl });
@@ -47,10 +44,10 @@ app.post("/api/upload", upload.single("file"), (req, res) => {
 // REST API
 app.use("/api/conversations", conversationRouter);
 
-// HTTP SERVER
+// HTTP server
 const server = http.createServer(app);
 
-// 🚀 SOCKET.IO CONFIG
+// Socket.io
 const io = new Server(server, {
   cors: {
     origin: process.env.FRONTEND_URL || "http://localhost:3000",
@@ -119,6 +116,45 @@ io.on("connection", (socket) => {
       console.error("sendMessage error:", e);
     }
   });
+
+  // REACTION: 
+  socket.on(
+    "sendReaction",
+    async ({
+      messageId,
+      userId,
+      type,
+    }: {
+      messageId: string;
+      userId: string;
+      type: string;
+    }) => {
+      try {
+        const msg = await MessageModel.findById(messageId);
+        if (!msg) return;
+
+        const existing = msg.reactions.find((r) => r.userId === userId);
+
+        if (existing) {
+          if (existing.type === type) {
+            msg.reactions = msg.reactions.filter((r) => r.userId !== userId);
+          } else {
+            existing.type = type;
+          }
+        } else {
+          
+          msg.reactions.push({ userId, type });
+        }
+
+        await msg.save();
+
+        // Emit message 
+        io.to(msg.roomId).emit("reactionUpdated", msg.toObject());
+      } catch (e) {
+        console.error("sendReaction error:", e);
+      }
+    }
+  );
 
   // TYPING
   socket.on("typing", ({ roomId, userId }) => {

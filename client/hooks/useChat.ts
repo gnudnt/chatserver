@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
 
 export interface Message {
@@ -12,50 +12,50 @@ export interface Message {
   fileUrl?: string;
   createdAt?: string;
   readBy?: string[];
+  reactions?: { userId: string; type: string }[];
 }
 
-export function useChat() {
+export function useChat(userId?: string | null) {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [userId, setUserId] = useState<string>("");
-  const [typingUser, setTypingUser] = useState<string | null>(null);
   const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
 
   const socketRef = useRef<Socket | null>(null);
   const currentRoom = useRef<string>("");
 
+  // Tạo socket 
   useEffect(() => {
     if (socketRef.current) return;
 
     const socket = io("http://localhost:4000", {
-      transports: ["websocket", "polling"], // ❗ QUAN TRỌNG
-      reconnection: true,
-      reconnectionAttempts: 10,
-      reconnectionDelay: 1000,
+      transports: ["websocket", "polling"],
+      withCredentials: true,
     });
 
     socketRef.current = socket;
 
     socket.on("connect", () => {
-      console.log("🔌 Connected:", socket.id);
+      console.log("🔌 Socket connected:", socket.id);
     });
 
-    socket.on("onlineUsers", (users) => {
+    socket.on("onlineUsers", (users: string[]) => {
       setOnlineUsers(users);
     });
 
-    socket.on("loadMessages", (msgs) => {
+    socket.on("loadMessages", (msgs: Message[]) => {
       setMessages(msgs);
     });
 
-    socket.on("receiveMessage", (msg) => {
+    socket.on("receiveMessage", (msg: Message) => {
       if (msg.roomId === currentRoom.current) {
         setMessages((prev) => [...prev, msg]);
       }
     });
 
-    socket.on("typing", ({ userId }) => {
-      setTypingUser(userId);
-      setTimeout(() => setTypingUser(null), 1200);
+    // cập nhật reaction
+    socket.on("reactionUpdated", (msg: Message) => {
+      setMessages((prev) =>
+        prev.map((m) => (m._id === msg._id ? msg : m))
+      );
     });
 
     socket.on("connect_error", (err) => {
@@ -64,57 +64,91 @@ export function useChat() {
 
     return () => {
       socket.disconnect();
+      socketRef.current = null;
     };
   }, []);
 
-  // REGISTER USER
+  // Đăng ký user với server
   useEffect(() => {
-    if (socketRef.current && userId) {
-      socketRef.current.emit("registerUser", userId);
-      console.log("📌 REGISTER:", userId);
+    const socket = socketRef.current;
+    if (!socket || !userId) return;
+
+    console.log("📌 REGISTER USER:", userId);
+    socket.emit("registerUser", userId);
+
+    if (currentRoom.current) {
+      socket.emit("joinRoom", currentRoom.current);
     }
   }, [userId]);
 
-  const selectUser = (u: string) => setUserId(u);
-
-  const joinRoom = (roomId: string) => {
-    if (!socketRef.current) return;
+  // Join room
+  const joinRoom = useCallback((roomId: string) => {
+    const socket = socketRef.current;
+    if (!socket || !roomId) return;
 
     currentRoom.current = roomId;
     setMessages([]);
+    socket.emit("joinRoom", roomId);
+  }, []);
 
-    socketRef.current.emit("joinRoom", roomId);
-  };
+  // Gửi tin nhắn
+  const sendMessage = useCallback(
+    (content: string, images?: string[], fileUrl?: string) => {
+      const socket = socketRef.current;
+      if (!socket || !currentRoom.current || !userId) return;
+      if (!content && !images?.length && !fileUrl) return;
 
-  const sendMessage = (content: string, images?: string[], fileUrl?: string) => {
-    if (!socketRef.current || !currentRoom.current) return;
+      socket.emit("sendMessage", {
+        content,
+        images: images || [],
+        fileUrl: fileUrl || "",
+        userId,
+        roomId: currentRoom.current,
+      });
+    },
+    [userId]
+  );
 
-    socketRef.current.emit("sendMessage", {
-      content,
-      images: images || [],
-      fileUrl: fileUrl || "",
-      userId,
-      roomId: currentRoom.current,
+  // ⭐ gửi reaction
+  const sendReaction = useCallback(
+    (messageId: string, type: string) => {
+      const socket = socketRef.current;
+      if (!socket || !userId) return;
+
+      socket.emit("sendReaction", {
+        messageId,
+        userId,
+        type,
+      });
+    },
+    [userId]
+  );
+
+  // Upload file 
+  const uploadFile = useCallback(async (file: File): Promise<string> => {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const res = await fetch("http://localhost:4000/api/upload", {
+      method: "POST",
+      body: formData,
     });
-  };
 
-  const sendTyping = () => {
-    if (!socketRef.current || !currentRoom.current) return;
+    const data = await res.json();
 
-    socketRef.current.emit("typing", {
-      roomId: currentRoom.current,
-      userId,
-    });
-  };
+    if (!res.ok || !data?.url) {
+      throw new Error(data?.error || "Upload failed");
+    }
+
+    return `http://localhost:4000${data.url}`;
+  }, []);
 
   return {
-    userId,
     messages,
-    typingUser,
     onlineUsers,
-    selectUser,
     joinRoom,
     sendMessage,
-    sendTyping,
+    uploadFile,
+    sendReaction,
   };
 }

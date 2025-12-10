@@ -8,6 +8,7 @@ export interface IMessage extends Document {
   roomId: string;
   createdAt: Date;
   readBy: string[];
+  reactions: { userId: string; type: string }[];
 }
 
 const MessageSchema: Schema<IMessage> = new Schema(
@@ -18,6 +19,12 @@ const MessageSchema: Schema<IMessage> = new Schema(
     userId: { type: String, required: true },
     roomId: { type: String, required: true },
     readBy: [{ type: String, default: [] }],
+    reactions: [
+      {
+        userId: { type: String, required: true },
+        type: { type: String, required: true },
+      },
+    ],
   },
   { timestamps: { createdAt: true, updatedAt: false } }
 );

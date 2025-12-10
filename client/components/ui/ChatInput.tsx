@@ -6,14 +6,12 @@ import data from "@emoji-mart/data";
 
 interface ChatInputProps {
   sendMessage: (content: string, images?: string[], fileUrl?: string) => void;
-  uploadFile: (file: File) => Promise<string>; 
-  onTyping: () => void;
+  uploadFile: (file: File) => Promise<string>;
 }
 
 export default function ChatInput({
   sendMessage,
-  uploadFile,
-  onTyping,
+  uploadFile
 }: ChatInputProps) {
   const [message, setMessage] = useState("");
   const [showEmoji, setShowEmoji] = useState(false);
@@ -23,7 +21,7 @@ export default function ChatInput({
   const fileRef = useRef<HTMLInputElement>(null);
   const emojiRef = useRef<HTMLDivElement>(null);
 
-  // Ẩn emoji khi click ra ngoài
+  // Ẩn emoji 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (emojiRef.current && !emojiRef.current.contains(e.target as Node)) {
@@ -34,17 +32,15 @@ export default function ChatInput({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // ------------------------------
-  // GỬI TIN NHẮN
-  // ------------------------------
   const handleSend = () => {
+    // file/ảnh 
     if (previewUrl && previewName) {
       const isImage = previewName.match(/\.(jpg|jpeg|png|gif|webp|bmp)$/i);
 
       if (isImage) {
         sendMessage(message.trim(), [previewUrl]);
       } else {
-        sendMessage(message.trim(), undefined, previewUrl);
+        sendMessage(message.trim(), [], previewUrl);
       }
 
       setPreviewUrl(null);
@@ -53,22 +49,21 @@ export default function ChatInput({
       return;
     }
 
+    // Gửi text
     if (!message.trim()) return;
     sendMessage(message.trim());
     setMessage("");
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    onTyping();
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
   };
 
-  // ------------------------------
-  // UPLOAD FILE (DÙNG uploadFile props)
-  // ------------------------------
+  
+  // UPLOAD FILE
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
 
@@ -76,20 +71,20 @@ export default function ChatInput({
     setPreviewName(file.name);
 
     try {
-      const url = await uploadFile(file);   // <— SỬ DỤNG uploadFile ĐÃ FIX
+      const url = await uploadFile(file);
       setPreviewUrl(url);
     } catch (err) {
       console.error("Upload failed:", err);
       alert("Upload failed");
     }
 
-    e.target.value = ""; // reset input
+    e.target.value = "";
   };
 
   return (
-    <div className="flex flex-col gap-2 p-2 border-t border-border bg-card relative">
+    <div className="flex flex-col gap-2 p-2 border-t border-gray-700 bg-[#242526] relative">
 
-      {/* Preview ảnh/file */}
+      {/* Preview file/ảnh */}
       {previewUrl && (
         <div className="flex items-center gap-2 px-2">
           {previewName?.match(/\.(jpg|jpeg|png|gif|webp|bmp)$/i) ? (
@@ -99,7 +94,7 @@ export default function ChatInput({
               className="max-h-24 rounded-md object-contain"
             />
           ) : (
-            <div className="px-3 py-2 rounded bg-secondary text-xs text-white">
+            <div className="px-3 py-2 rounded bg-gray-600 text-xs text-white">
               📎 {previewName}
             </div>
           )}
@@ -109,7 +104,7 @@ export default function ChatInput({
               setPreviewUrl(null);
               setPreviewName(null);
             }}
-            className="text-xs text-red-500"
+            className="text-xs text-red-400 hover:underline"
           >
             Hủy
           </button>
@@ -120,36 +115,28 @@ export default function ChatInput({
         {/* Emoji button */}
         <button
           onClick={() => setShowEmoji((prev) => !prev)}
-          className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-secondary"
+          className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-gray-600"
         >
           😀
         </button>
 
-        {/* Input chat */}
+        {/* Input */}
         <input
           type="text"
           value={message}
-          onChange={(e) => {
-            setMessage(e.target.value);
-            onTyping();
-          }}
+          onChange={(e) => setMessage(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Nhập tin nhắn..."
-          className="flex-1 px-4 py-2 rounded-full border border-border outline-none focus:ring-2 focus:ring-primary"
+          className="flex-1 px-4 py-2 rounded-full bg-[#3A3B3C] text-white outline-none focus:ring-2 focus:ring-blue-500"
         />
 
         {/* Hidden file input */}
-        <input
-          type="file"
-          ref={fileRef}
-          className="hidden"
-          onChange={handleFileChange}
-        />
+        <input type="file" ref={fileRef} className="hidden" onChange={handleFileChange} />
 
         {/* Upload button */}
         <button
           onClick={() => fileRef.current?.click()}
-          className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-secondary"
+          className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-gray-600"
         >
           📎
         </button>
@@ -157,7 +144,7 @@ export default function ChatInput({
         {/* Send button */}
         <button
           onClick={handleSend}
-          className="h-10 w-10 flex items-center justify-center bg-primary text-white rounded-full hover:bg-primary/90"
+          className="h-10 w-10 flex items-center justify-center bg-blue-600 text-white rounded-full hover:bg-blue-700"
         >
           ➤
         </button>
