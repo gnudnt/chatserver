@@ -3,15 +3,18 @@
 import { useRef, useState, useEffect } from "react";
 import Picker from "@emoji-mart/react";
 import data from "@emoji-mart/data";
+import { getSocket } from "@/utils/socketSingleton";
 
 interface ChatInputProps {
   sendMessage: (content: string, images?: string[], fileUrl?: string) => void;
   uploadFile: (file: File) => Promise<string>;
+  roomId?: string; // ⭐ THÊM — cần biết đang ở phòng nào để emit typing
 }
 
 export default function ChatInput({
   sendMessage,
-  uploadFile
+  uploadFile,
+  roomId
 }: ChatInputProps) {
   const [message, setMessage] = useState("");
   const [showEmoji, setShowEmoji] = useState(false);
@@ -20,6 +23,8 @@ export default function ChatInput({
 
   const fileRef = useRef<HTMLInputElement>(null);
   const emojiRef = useRef<HTMLDivElement>(null);
+  const typingTimeout = useRef<NodeJS.Timeout | null>(null);
+  const socket = getSocket();
 
   // Ẩn emoji 
   useEffect(() => {
@@ -32,8 +37,25 @@ export default function ChatInput({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // ⭐⭐⭐ GỬI SỰ KIỆN TYPING
+  const emitTyping = () => {
+    if (!roomId) return;
+
+    socket.emit("typing", { roomId });
+
+    // Clear timeout cũ
+    if (typingTimeout.current) clearTimeout(typingTimeout.current);
+
+    // Sau 2 giây không gõ → stopTyping
+    typingTimeout.current = setTimeout(() => {
+      socket.emit("stopTyping", { roomId });
+    }, 2000);
+  };
+
   const handleSend = () => {
-    // file/ảnh 
+    // Khi gửi → chắc chắn stop typing
+    if (roomId) socket.emit("stopTyping", { roomId });
+
     if (previewUrl && previewName) {
       const isImage = previewName.match(/\.(jpg|jpeg|png|gif|webp|bmp)$/i);
 
@@ -49,20 +71,20 @@ export default function ChatInput({
       return;
     }
 
-    // Gửi text
     if (!message.trim()) return;
     sendMessage(message.trim());
     setMessage("");
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    emitTyping(); // ⭐ mỗi lần gõ → typing
+
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
   };
 
-  
   // UPLOAD FILE
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
@@ -84,7 +106,6 @@ export default function ChatInput({
   return (
     <div className="flex flex-col gap-2 p-2 border-t border-gray-700 bg-[#242526] relative">
 
-      {/* Preview file/ảnh */}
       {previewUrl && (
         <div className="flex items-center gap-2 px-2">
           {previewName?.match(/\.(jpg|jpeg|png|gif|webp|bmp)$/i) ? (
@@ -112,7 +133,7 @@ export default function ChatInput({
       )}
 
       <div className="flex items-center gap-2">
-        {/* Emoji button */}
+
         <button
           onClick={() => setShowEmoji((prev) => !prev)}
           className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-gray-600"
@@ -120,20 +141,20 @@ export default function ChatInput({
           😀
         </button>
 
-        {/* Input */}
         <input
           type="text"
           value={message}
-          onChange={(e) => setMessage(e.target.value)}
+          onChange={(e) => {
+            setMessage(e.target.value);
+            emitTyping(); // ⭐ typing khi onChange
+          }}
           onKeyDown={handleKeyDown}
           placeholder="Nhập tin nhắn..."
           className="flex-1 px-4 py-2 rounded-full bg-[#3A3B3C] text-white outline-none focus:ring-2 focus:ring-blue-500"
         />
 
-        {/* Hidden file input */}
         <input type="file" ref={fileRef} className="hidden" onChange={handleFileChange} />
 
-        {/* Upload button */}
         <button
           onClick={() => fileRef.current?.click()}
           className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-gray-600"
@@ -141,7 +162,6 @@ export default function ChatInput({
           📎
         </button>
 
-        {/* Send button */}
         <button
           onClick={handleSend}
           className="h-10 w-10 flex items-center justify-center bg-blue-600 text-white rounded-full hover:bg-blue-700"
@@ -149,7 +169,6 @@ export default function ChatInput({
           ➤
         </button>
 
-        {/* Emoji picker */}
         {showEmoji && (
           <div ref={emojiRef} className="absolute bottom-12 left-2 z-50">
             <Picker

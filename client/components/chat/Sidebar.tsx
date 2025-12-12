@@ -1,5 +1,6 @@
 "use client";
 
+import { useConversations } from "@/hooks/useConversations";
 import ConversationItem from "./ConversationItem";
 
 interface SidebarProps {
@@ -9,15 +10,13 @@ interface SidebarProps {
   onSelectRoom: (roomId: string) => void;
 }
 
-const ALL_USERS = ["Alice", "Bob", "Charlie"];
-
 export default function Sidebar({
   currentUser,
   onlineUsers,
   activeRoom,
   onSelectRoom,
 }: SidebarProps) {
-  const others = ALL_USERS.filter((u) => u !== currentUser);
+  const { conversations } = useConversations(currentUser, activeRoom);
 
   return (
     <div className="w-[260px] bg-[#18191A] border-r border-[#3A3B3C] text-white">
@@ -26,19 +25,20 @@ export default function Sidebar({
       </div>
 
       <div className="flex flex-col">
-        {others.map((name) => {
-          const roomId = [currentUser, name].sort().join("_");
-          const isActive = roomId === activeRoom;
-          const isOnline = onlineUsers.includes(name);
+        {conversations.map((convo) => {
+          const other = convo.members.find((m) => m !== currentUser) || "";
+          const isOnline = onlineUsers.includes(other);
 
           return (
             <ConversationItem
-              key={name}
-              name={name}
-              roomId={roomId}
-              active={!!isActive}
+              key={convo.roomId}
+              name={other}
+              roomId={convo.roomId}
+              active={activeRoom === convo.roomId}
               online={isOnline}
-              onClick={() => onSelectRoom(roomId)}
+              lastMessage={convo.lastMessage}
+              unread={convo.unreadCount || 0}
+              onClick={() => onSelectRoom(convo.roomId)}
             />
           );
         })}

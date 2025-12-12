@@ -1,5 +1,6 @@
 import express from "express";
 import ConversationModel from "../models/Conversation";
+import MessageModel from "../models/Message";
 
 const router = express.Router();
 
@@ -12,8 +13,16 @@ router.get("/:userId", async (req, res) => {
       members: userId,
     }).sort({ updatedAt: -1 });
 
-    res.json(conversations);
-  } catch (e: any) {
+    // ⭐ REPLACE unreadCount logic → lấy từ Conversation.unread
+    const results = conversations.map((c) => {
+      return {
+        ...c.toObject(),
+        unreadCount: c.unread?.get(userId) || 0,   // ⭐ LẤY ĐÚNG SỐ TIN CHƯA ĐỌC TỪ DB
+      };
+    });
+
+    res.json(results);
+  } catch (e) {
     console.error("GET /conversations error:", e);
     res.status(500).json({ error: e.message });
   }
@@ -36,7 +45,7 @@ router.post("/", async (req, res) => {
     }
 
     res.json(convo);
-  } catch (e: any) {
+  } catch (e) {
     console.error("POST /conversations error:", e);
     res.status(500).json({ error: e.message });
   }

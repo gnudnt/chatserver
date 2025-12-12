@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { io, Socket } from "socket.io-client";
+import { Socket } from "socket.io-client";
+import { getSocket } from "@/utils/socketSingleton";
 
 export interface Message {
   _id?: string;
@@ -22,16 +23,12 @@ export function useChat(userId?: string | null) {
   const socketRef = useRef<Socket | null>(null);
   const currentRoom = useRef<string>("");
 
-  // Tạo socket 
+  // 🔵 Tạo socket chung
   useEffect(() => {
-    if (socketRef.current) return;
-
-    const socket = io("http://localhost:4000", {
-      transports: ["websocket", "polling"],
-      withCredentials: true,
-    });
-
-    socketRef.current = socket;
+    if (!socketRef.current) {
+      socketRef.current = getSocket();
+    }
+    const socket = socketRef.current;
 
     socket.on("connect", () => {
       console.log("🔌 Socket connected:", socket.id);
@@ -45,35 +42,55 @@ export function useChat(userId?: string | null) {
       setMessages(msgs);
     });
 
+    // ⭐ TRÁNH TRÙNG TIN
     socket.on("receiveMessage", (msg: Message) => {
-      if (msg.roomId === currentRoom.current) {
-        setMessages((prev) => [...prev, msg]);
-      }
+      if (msg.roomId !== currentRoom.current) return;
+
+      setMessages((prev) => {
+        const exists = prev.some((m) => m._id === msg._id);
+        if (exists) return prev;
+        return [...prev, msg];
+      });
     });
 
-    // cập nhật reaction
     socket.on("reactionUpdated", (msg: Message) => {
       setMessages((prev) =>
         prev.map((m) => (m._id === msg._id ? msg : m))
       );
     });
 
-    socket.on("connect_error", (err) => {
-      console.error("❌ Socket connect_error:", err.message);
+    // ⭐⭐⭐ REALTIME ĐÃ XEM
+    socket.on("messagesRead", ({ roomId, userId: reader }) => {
+      if (roomId !== currentRoom.current) return;
+
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.roomId === roomId
+            ? {
+                ...msg,
+                readBy: msg.readBy?.includes(reader)
+                  ? msg.readBy
+                  : [...(msg.readBy || []), reader],
+              }
+            : msg
+        )
+      );
     });
 
     return () => {
-      socket.disconnect();
-      socketRef.current = null;
+      socket.off("onlineUsers");
+      socket.off("loadMessages");
+      socket.off("receiveMessage");
+      socket.off("reactionUpdated");
+      socket.off("messagesRead");
     };
   }, []);
 
-  // Đăng ký user với server
+  // 🔵 Đăng ký user
   useEffect(() => {
     const socket = socketRef.current;
     if (!socket || !userId) return;
 
-    console.log("📌 REGISTER USER:", userId);
     socket.emit("registerUser", userId);
 
     if (currentRoom.current) {
@@ -81,21 +98,21 @@ export function useChat(userId?: string | null) {
     }
   }, [userId]);
 
-  // Join room
+  // 🔵 Join room
   const joinRoom = useCallback((roomId: string) => {
     const socket = socketRef.current;
     if (!socket || !roomId) return;
 
     currentRoom.current = roomId;
-    setMessages([]);
     socket.emit("joinRoom", roomId);
   }, []);
 
-  // Gửi tin nhắn
+  // 🔵 Gửi tin nhắn
   const sendMessage = useCallback(
     (content: string, images?: string[], fileUrl?: string) => {
       const socket = socketRef.current;
       if (!socket || !currentRoom.current || !userId) return;
+
       if (!content && !images?.length && !fileUrl) return;
 
       socket.emit("sendMessage", {
@@ -105,11 +122,17 @@ export function useChat(userId?: string | null) {
         userId,
         roomId: currentRoom.current,
       });
+
+      // ⭐ Khi gửi xong → stopTyping
+      socket.emit("stopTyping", {
+        roomId: currentRoom.current,
+        userId,
+      });
     },
     [userId]
   );
 
-  // ⭐ gửi reaction
+  // 🔵 Gửi reaction
   const sendReaction = useCallback(
     (messageId: string, type: string) => {
       const socket = socketRef.current;
@@ -124,7 +147,35 @@ export function useChat(userId?: string | null) {
     [userId]
   );
 
-  // Upload file 
+  // ⭐⭐⭐ TÍNH NĂNG MỚI — TYPING ⭐⭐⭐
+
+  const sendTyping = useCallback(
+    (roomId: string) => {
+      const socket = socketRef.current;
+      if (!socket || !userId) return;
+
+      socket.emit("typing", {
+        roomId,
+        userId,
+      });
+    },
+    [userId]
+  );
+
+  const sendStopTyping = useCallback(
+    (roomId: string) => {
+      const socket = socketRef.current;
+      if (!socket || !userId) return;
+
+      socket.emit("stopTyping", {
+        roomId,
+        userId,
+      });
+    },
+    [userId]
+  );
+
+  // 🔵 Upload file
   const uploadFile = useCallback(async (file: File): Promise<string> => {
     const formData = new FormData();
     formData.append("file", file);
@@ -148,7 +199,11 @@ export function useChat(userId?: string | null) {
     onlineUsers,
     joinRoom,
     sendMessage,
-    uploadFile,
     sendReaction,
+    uploadFile,
+
+    // ⭐⭐ EXPORT TYPING API
+    sendTyping,
+    sendStopTyping,
   };
 }

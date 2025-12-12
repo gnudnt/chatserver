@@ -1,0 +1,216 @@
+import {
+  channelRoom,
+  sessionRoom,
+  userRoom,
+  userStateRoom,
+} from "../utils/index.js";
+
+import {
+  createChannel,
+  searchChannels,
+  joinChannel,
+  listChannels,
+  updateChannels,
+  removeChannels,
+  leftChannels,
+  createPrivateChannel,
+  createSubChannel,
+  updateSubChannel,
+  removeSubChannels,
+  updateInvite,
+  getInvites,
+  getChannelBySupporter,
+  addMediaToChannel,
+  removeUserInChannel,
+  joinSubChannel,
+  blockUserInChannel,
+  unBlockUserInChannel,
+  createInvite,
+  leftSubChannels,
+  listSubChannels,
+
+} from "./channels/index.js";
+
+import {
+  sendMessage,
+  getAllMessage,
+  ackMessage,
+  typingMessage,
+  removeMessage,
+  updateMessage,
+} from "./messages/index.js";
+
+import {
+  getNotifications,
+  makeAsRead,
+  removeNotification,
+  sendNotifications,
+  toggleNotificationStatus,
+} from "./notifications/index.js";
+
+import { createUser, getUser, reachUser, searchUsers } from "./user/index.js";
+
+const initEventHandlers = ({ io, db, config }) => {
+  /**
+   * @SocketIO
+   * @Middleware
+   */
+  io.use(async (socket, next) => {
+    const token = socket.handshake.auth.token;
+    socket.userId = token;
+    console.log("socket.userId", socket.userId);
+    let channels;
+
+    try {
+      channels = await db.channelsDb.fetchUserChannels(socket.userId);
+    } catch (e) {
+      return next(new Error("something went wrong when fetchUserChannels"));
+    }
+    channels.forEach((channelId) => {
+      console.log(channelRoom(channelId.channelId));
+      socket.join(channelRoom(channelId.channelId));
+    });
+    socket.join(userRoom(socket.userId));
+    socket.join(sessionRoom(socket.request.session.id));
+
+    next();
+  });
+
+  /**
+   * @HandleConnect
+   */
+  io.on("connection", async (socket) => {
+    console.log("socket connected", socket.id);
+    const { channelsDb, userDb, messagesDb, notificationDb } = db;
+    const channelConfigs = { io, socket, db: channelsDb };
+    const userConfigs = { io, socket, db: userDb };
+    const messagesConfigs = { io, socket, db: messagesDb };
+    const notificationConfigs = { io, socket, db: notificationDb };
+
+    /**
+     * @Channel
+     * @param channelConfig
+     */
+    socket.on("channel:create", createChannel(channelConfigs));
+    socket.on("channel:join", joinChannel(channelConfigs));
+    socket.on("channel:list", listChannels(channelConfigs));
+    socket.on("channel:search", searchChannels(channelConfigs));
+    socket.on("channel:update", updateChannels(channelConfigs));
+    socket.on("channel:remove", removeChannels(channelConfigs));
+
+    socket.on("channel:createInvites", createInvite(channelConfigs));
+    socket.on("channel:invites", getInvites(channelConfigs));
+    socket.on("channel:updateInvite", updateInvite(channelConfigs));
+
+    socket.on("channel:requestJoin", updateInvite(channelConfigs));
+    socket.on("channel:updateRequestJoin", updateInvite(channelConfigs));
+
+    socket.on("channel:left", leftChannels(channelConfigs));
+    socket.on("channel:kick", removeUserInChannel(channelConfigs));
+
+    socket.on("channel:addMedia", addMediaToChannel(channelConfigs));
+
+    socket.on("channel:supportedUser", getChannelBySupporter(channelConfigs));
+
+    socket.on("channel:blockUser", blockUserInChannel(channelConfigs));
+    socket.on("channel:unBlockUser", unBlockUserInChannel(channelConfigs));
+
+    /**
+     * @Privatehannel
+     * @param channelConfig
+     */
+    socket.on("privateChannel:create", createPrivateChannel(channelConfigs));
+    socket.on("privateChannel:update", createChannel(channelConfigs));
+    socket.on("privateChannel:delete", createChannel(channelConfigs));
+
+    /**
+     * @SubChannel
+     * @param channelConfig
+     */
+    socket.on("subChannel:create", createSubChannel(channelConfigs));
+    socket.on("subChannel:update", updateSubChannel(channelConfigs));
+    socket.on("subChannel:list", listSubChannels(channelConfigs));
+    socket.on("subChannel:join", joinSubChannel(channelConfigs));
+    socket.on("subChannel:left", leftSubChannels(channelConfigs));
+    socket.on("subChannel:delete", removeSubChannels(channelConfigs));
+
+    /**
+     * @Users
+     * @param userConfigs
+     */
+    socket.on("user:create", createUser(userConfigs));
+    socket.on("user:get", getUser(userConfigs));
+    socket.on("user:reach", reachUser(userConfigs));
+    socket.on("user:search", searchUsers(userConfigs));
+
+    /**
+     * @Messages
+     * @param messagesConfigs
+     */
+    socket.on("message:send", sendMessage(messagesConfigs));
+    socket.on("message:list", getAllMessage(messagesConfigs));
+    socket.on("message:ack", ackMessage(messagesConfigs));
+    socket.on("message:typing", typingMessage(messagesConfigs));
+    socket.on("message:remove", removeMessage(messagesConfigs));
+    socket.on("message:update", updateMessage(messagesConfigs));
+
+    /**
+     * @Notifications
+     * @param notificationConfigs
+     */
+    socket.on("notification:send", sendNotifications(notificationConfigs));
+    socket.on("notification:list", getNotifications(notificationConfigs));
+    socket.on("notification:delete", removeNotification(notificationConfigs));
+    socket.on("notification:makeRead", makeAsRead(notificationConfigs));
+    socket.on("notification:toggle", toggleNotificationStatus(notificationConfigs))
+    /**
+     * @HandleDisconnect
+     */
+    socket.on("disconnect", async () => {
+      console.log("disconnect", socket.userId);
+      // the other users are not notified of the disconnection right away
+      setTimeout(async () => {
+        const sockets = await io.in(userRoom(socket.userId)).fetchSockets();
+        const hasReconnected = sockets.length > 0;
+        if (!hasReconnected) {
+          await userDb.setUserIsDisconnected(socket.userId);
+
+          const userChannels = await channelsDb.fetchUserChannels(socket.userId);
+          const roomsToNotify = userChannels.map(channel => channelRoom(channel.channelId));
+          roomsToNotify.push(userStateRoom(socket.userId));
+
+          io.to(roomsToNotify).emit("user:disconnected", {
+            userId: socket.userId,
+            timestamp: Date.now()
+          });
+        }
+      }, config.disconnectionGraceDelay ?? 10_000);
+
+      const channels = await channelsDb.fetchUserChannels(socket.userId);
+
+      channels.forEach((channelId) => {
+        io.to(channelRoom(channelId)).emit("message:typing", {
+          channelId,
+          userId: socket.userId,
+          isTyping: false,
+        });
+      });
+    });
+
+    const wasOnline = (await userDb.setUserIsConnected(socket.userId)).modifiedCount > 0;
+    socket.join(userStateRoom(socket.userId));
+    if (wasOnline) {
+      const userChannels = await channelsDb.fetchUserChannels(socket.userId);
+      const roomsToNotify = userChannels.map(channel => channelRoom(channel.channelId));
+      roomsToNotify.push(userStateRoom(socket.userId));
+
+      io.to(roomsToNotify).emit("user:connected", {
+        userId: socket.userId,
+        timestamp: Date.now()
+      });
+    }
+
+  });
+};
+
+export { initEventHandlers };

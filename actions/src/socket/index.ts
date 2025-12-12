@@ -16,7 +16,7 @@ dotenv.config({ path: path.join(__dirname, "../../.env") });
 const app = express();
 app.use(express.json());
 
-// CORS 
+// CORS
 app.use(
   cors({
     origin: process.env.FRONTEND_URL || "http://localhost:3000",
@@ -61,6 +61,12 @@ const io = new Server(server, {
 // userId -> Set(socketId)
 const onlineUsers: Map<string, Set<string>> = new Map();
 
+// ⭐ socketId -> userId (để biết ai đang gõ)
+const socketUserMap: Map<string, string> = new Map();
+
+// ⭐ socketId -> roomId
+const userActiveRoom: Map<string, string> = new Map();
+
 io.on("connection", (socket) => {
   console.log("🔌 Socket connected:", socket.id);
 
@@ -68,10 +74,14 @@ io.on("connection", (socket) => {
   socket.on("registerUser", (userId: string) => {
     if (!userId) return;
 
+    socketUserMap.set(socket.id, userId); // ⭐ LƯU USER ID THẬT
+
     if (!onlineUsers.has(userId)) {
       onlineUsers.set(userId, new Set());
     }
     onlineUsers.get(userId)!.add(socket.id);
+
+    socket.join(userId);
 
     io.emit("onlineUsers", Array.from(onlineUsers.keys()));
   });
@@ -80,6 +90,8 @@ io.on("connection", (socket) => {
   socket.on("joinRoom", async (roomId: string) => {
     socket.join(roomId);
     console.log(`🟢 ${socket.id} joined room: ${roomId}`);
+
+    userActiveRoom.set(socket.id, roomId);
 
     const messages = await MessageModel.find({ roomId })
       .sort({ createdAt: 1 })
@@ -98,67 +110,123 @@ io.on("connection", (socket) => {
       };
 
       const saved: any = await MessageModel.create(payload);
-
       const members = saved.roomId.split("_");
-      await ConversationModel.findOneAndUpdate(
+
+      const convoBefore = await ConversationModel.findOne({ roomId: saved.roomId });
+
+      const unreadUpdate: any = {};
+      members.forEach((m: string) => {
+        if (m === msg.userId) {
+          unreadUpdate[`unread.${m}`] = 0;
+        } else {
+          const oldValue = convoBefore?.unread?.get(m) || 0;
+          unreadUpdate[`unread.${m}`] = oldValue + 1;
+        }
+      });
+
+      const readers: string[] = [];
+      for (const user of members) {
+        if (user === msg.userId) continue;
+
+        const sockets = onlineUsers.get(user);
+        if (!sockets) continue;
+
+        for (const sid of sockets) {
+          if (userActiveRoom.get(sid) === saved.roomId) {
+            readers.push(user);
+          }
+        }
+      }
+
+      if (readers.length > 0) {
+        await MessageModel.updateMany(
+          { roomId: saved.roomId },
+          { $addToSet: { readBy: { $each: readers } } }
+        );
+
+        readers.forEach((u) => {
+          unreadUpdate[`unread.${u}`] = 0;
+        });
+      }
+
+      const conversation = await ConversationModel.findOneAndUpdate(
         { roomId: saved.roomId },
         {
           roomId: saved.roomId,
           members,
           lastMessage: saved.content || "📎 File",
           updatedAt: new Date(),
+          ...unreadUpdate,
         },
         { upsert: true, new: true }
       );
 
+      members.forEach((m: string) => {
+        io.to(m).emit("conversationUpdated", {
+          ...conversation.toObject(),
+          unreadCount: conversation.unread?.get(m) || 0,
+        });
+      });
+
       io.to(saved.roomId).emit("receiveMessage", saved);
+
+      readers.forEach((u) => {
+        io.to(saved.roomId).emit("messagesRead", {
+          roomId: saved.roomId,
+          userId: u,
+        });
+      });
+
     } catch (e) {
       console.error("sendMessage error:", e);
     }
   });
 
-  // REACTION: 
-  socket.on(
-    "sendReaction",
-    async ({
-      messageId,
-      userId,
-      type,
-    }: {
-      messageId: string;
-      userId: string;
-      type: string;
-    }) => {
-      try {
-        const msg = await MessageModel.findById(messageId);
-        if (!msg) return;
+  // REACTION
+  socket.on("sendReaction", async ({ messageId, userId, type }) => {
+    try {
+      const msg = await MessageModel.findById(messageId);
+      if (!msg) return;
 
-        const existing = msg.reactions.find((r) => r.userId === userId);
+      const existing = msg.reactions.find((r) => r.userId === userId);
 
-        if (existing) {
-          if (existing.type === type) {
-            msg.reactions = msg.reactions.filter((r) => r.userId !== userId);
-          } else {
-            existing.type = type;
-          }
+      if (existing) {
+        if (existing.type === type) {
+          msg.reactions = msg.reactions.filter((r) => r.userId !== userId);
         } else {
-          
-          msg.reactions.push({ userId, type });
+          existing.type = type;
         }
-
-        await msg.save();
-
-        // Emit message 
-        io.to(msg.roomId).emit("reactionUpdated", msg.toObject());
-      } catch (e) {
-        console.error("sendReaction error:", e);
+      } else {
+        msg.reactions.push({ userId, type });
       }
-    }
-  );
 
-  // TYPING
-  socket.on("typing", ({ roomId, userId }) => {
-    socket.to(roomId).emit("typing", { roomId, userId });
+      await msg.save();
+
+      io.to(msg.roomId).emit("reactionUpdated", msg.toObject());
+    } catch (e) {
+      console.error("sendReaction error:", e);
+    }
+  });
+
+  // ⭐⭐⭐⭐⭐ TYPING — FIXED TO USE REAL USER ID
+  socket.on("typing", ({ roomId }) => {
+    const userId = socketUserMap.get(socket.id);
+    if (!userId) return;
+
+    io.to(roomId).emit("typing", {
+      roomId,
+      userId, // ✔ gửi userId thật
+    });
+  });
+
+  socket.on("stopTyping", ({ roomId }) => {
+    const userId = socketUserMap.get(socket.id);
+    if (!userId) return;
+
+    io.to(roomId).emit("stopTyping", {
+      roomId,
+      userId, // ✔ gửi userId thật
+    });
   });
 
   // MARK AS READ
@@ -168,7 +236,25 @@ io.on("connection", (socket) => {
         { roomId, readBy: { $ne: userId } },
         { $addToSet: { readBy: userId } }
       );
-      io.to(roomId).emit("messagesRead", { roomId, userId });
+
+      const updated = await ConversationModel.findOneAndUpdate(
+        { roomId },
+        { $set: { [`unread.${userId}`]: 0 } },
+        { new: true }
+      );
+
+      if (updated) {
+        io.to(userId).emit("conversationUpdated", {
+          ...updated.toObject(),
+          unreadCount: 0,
+        });
+      }
+
+      io.to(roomId).emit("messagesRead", {
+        roomId,
+        userId,
+      });
+
     } catch (e) {
       console.error("markAsRead error:", e);
     }
@@ -178,10 +264,14 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => {
     console.log("🔴 Socket disconnected:", socket.id);
 
-    for (const [uid, sockets] of onlineUsers.entries()) {
-      if (sockets.has(socket.id)) {
-        sockets.delete(socket.id);
-        if (sockets.size === 0) onlineUsers.delete(uid);
+    const userId = socketUserMap.get(socket.id);
+    socketUserMap.delete(socket.id);
+    userActiveRoom.delete(socket.id);
+
+    if (userId && onlineUsers.has(userId)) {
+      onlineUsers.get(userId)!.delete(socket.id);
+      if (onlineUsers.get(userId)!.size === 0) {
+        onlineUsers.delete(userId);
       }
     }
 
