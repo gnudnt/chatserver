@@ -95,6 +95,8 @@ io.on("connection", (socket) => {
 
     const messages = await MessageModel.find({ roomId })
       .sort({ createdAt: 1 })
+        .limit(100)
+
       .lean();
 
     socket.emit("loadMessages", messages);
@@ -105,6 +107,7 @@ io.on("connection", (socket) => {
     try {
       const payload = {
         ...msg,
+        replyTo: msg.replyTo ?? null,
         createdAt: new Date(),
         readBy: [msg.userId],
       };
@@ -208,7 +211,196 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ⭐⭐⭐⭐⭐ TYPING — FIXED TO USE REAL USER ID
+    // REVOKE MESSAGE — THU HỒI CHO MỌI NGƯỜI
+    socket.on("revokeMessage", async ({ messageId }) => {
+  try {
+    const userId = socketUserMap.get(socket.id);
+    if (!userId) return;
+
+    const msg = await MessageModel.findById(messageId);
+    if (!msg) return;
+
+    // ❌ Không phải chủ tin nhắn
+    if (msg.userId !== userId) return;
+
+    // 1️⃣ Thu hồi message
+    msg.isRevoked = true;
+    msg.content = null;
+    msg.images = [];
+    msg.fileUrl = null;
+    await msg.save();
+
+    // 2️⃣ Emit realtime cho khung chat
+    io.to(msg.roomId).emit("messageRevoked", {
+      messageId: msg._id.toString(),
+    });
+
+    // 3️⃣ LẤY TIN NHẮN CUỐI CÙNG CỦA PHÒNG
+    const latestMessage = await MessageModel.findOne({
+      roomId: msg.roomId,
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // 4️⃣ CHỈ UPDATE SIDEBAR NẾU THU HỒI TIN NHẮN CUỐI
+    if (
+      latestMessage &&
+      latestMessage._id.toString() === msg._id.toString()
+    ) {
+      const convo = await ConversationModel.findOneAndUpdate(
+        { roomId: msg.roomId },
+        {
+          lastMessage: "Tin nhắn đã bị thu hồi",
+          updatedAt: new Date(),
+        },
+        { new: true }
+      );
+
+      if (convo) {
+        convo.members.forEach((m: string) => {
+          io.to(m).emit("conversationUpdated", {
+            ...convo.toObject(),
+            unreadCount: convo.unread?.get(m) || 0,
+          });
+        });
+      }
+    }
+  } catch (e) {
+    console.error("revokeMessage error:", e);
+  }
+});
+  // ✏️ EDIT MESSAGE — CHỈNH SỬA TIN NHẮN
+  socket.on("editMessage", async ({ messageId, content }) => {
+    try {
+      const userId = socketUserMap.get(socket.id);
+      if (!userId) return;
+
+      const msg = await MessageModel.findById(messageId);
+      if (!msg) return;
+
+      // ❌ Không phải chủ tin nhắn
+      if (msg.userId !== userId) return;
+
+      // ❌ Không cho sửa tin đã thu hồi
+      if (msg.isRevoked) return;
+
+      // 1️⃣ Cập nhật message
+      msg.content = content;
+      msg.isEdited = true;
+      msg.editedAt = new Date();
+      await msg.save();
+
+      // 2️⃣ Emit realtime cho khung chat
+      io.to(msg.roomId).emit("messageEdited", {
+        _id: msg._id.toString(),
+        content: msg.content,
+        isEdited: true,
+      });
+
+      // 3️⃣ Lấy tin nhắn CUỐI của room
+      const latestMessage = await MessageModel.findOne({
+        roomId: msg.roomId,
+      })
+        .sort({ createdAt: -1 })
+        .lean();
+
+      // 4️⃣ CHỈ update SIDEBAR nếu sửa TIN CUỐI
+      if (
+        latestMessage &&
+        latestMessage._id.toString() === msg._id.toString()
+      ) {
+        const convo = await ConversationModel.findOneAndUpdate(
+          { roomId: msg.roomId },
+          {
+            lastMessage: `${content} (đã chỉnh sửa)`,
+            updatedAt: new Date(),
+          },
+          { new: true }
+        );
+
+        if (convo) {
+          convo.members.forEach((m: string) => {
+            io.to(m).emit("conversationUpdated", {
+              ...convo.toObject(),
+              unreadCount: convo.unread?.get(m) || 0,
+            });
+          });
+        }
+      }
+    } catch (e) {
+      console.error("editMessage error:", e);
+    }
+  });
+
+// 📌 PIN MESSAGE
+socket.on("pinMessage", async ({ messageId }) => {
+  try {
+    const userId = socketUserMap.get(socket.id);
+    if (!userId) return;
+
+    const msg = await MessageModel.findById(messageId);
+    if (!msg) return;
+
+    const roomId = msg.roomId;
+
+    // ❌ BỎ GHIM TIN ĐANG GHIM TRƯỚC ĐÓ TRONG ROOM
+    await MessageModel.updateMany(
+      { roomId, isPinned: true },
+      {
+        $set: {
+          isPinned: false,
+          pinnedBy: null,
+          pinnedAt: null,
+        },
+      }
+    );
+
+    // ✅ GHIM TIN MỚI
+    msg.isPinned = true;
+    msg.pinnedBy = userId;
+    msg.pinnedAt = new Date();
+    await msg.save();
+
+    // 📢 EMIT REALTIME CHO CẢ ROOM
+    io.to(roomId).emit("messagePinned", {
+      messageId: msg._id.toString(),
+      pinnedBy: userId,
+      pinnedAt: msg.pinnedAt,
+    });
+
+  } catch (e) {
+    console.error("pinMessage error:", e);
+  }
+});
+
+// 📌 UNPIN MESSAGE
+socket.on("unpinMessage", async ({ messageId }) => {
+  try {
+    const userId = socketUserMap.get(socket.id);
+    if (!userId) return;
+
+    const msg = await MessageModel.findById(messageId);
+    if (!msg || !msg.isPinned) return;
+
+    const roomId = msg.roomId;
+
+    msg.isPinned = false;
+    msg.pinnedBy = null;
+    msg.pinnedAt = null;
+    await msg.save();
+
+    // 📢 EMIT REALTIME CHO CẢ ROOM
+    io.to(roomId).emit("messageUnpinned", {
+      messageId: msg._id.toString(),
+    });
+
+  } catch (e) {
+    console.error("unpinMessage error:", e);
+  }
+});
+
+
+  // TYPING — FIXED TO USE REAL USER ID
   socket.on("typing", ({ roomId }) => {
     const userId = socketUserMap.get(socket.id);
     if (!userId) return;
@@ -294,3 +486,5 @@ server.listen(process.env.PORT || 4000, () => {
     console.error("❌ MongoDB error:", e);
   }
 })();
+
+

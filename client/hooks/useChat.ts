@@ -9,13 +9,31 @@ export interface Message {
   content?: string;
   userId: string;
   roomId: string;
+  isPinned?: boolean;
+  pinnedBy?: string;
+  pinnedAt?: string;
   images?: string[];
   fileUrl?: string;
   createdAt?: string;
   readBy?: string[];
   reactions?: { userId: string; type: string }[];
+  isRevoked?: boolean;
+  replyTo?: {
+    messageId: string;
+    userId: string;
+    content?: string;
+    images?: string[];
+    fileUrl?: string;
+  } | null;
 }
 
+export interface ReplyPreview {
+  messageId: string;
+  userId: string;
+  content?: string;
+  images?: string[];
+  fileUrl?: string;
+}
 export function useChat(userId?: string | null) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
@@ -59,6 +77,28 @@ export function useChat(userId?: string | null) {
       );
     });
 
+    // 📌 REALTIME PIN — chỉ 1 tin
+socket.on("messagePinned", ({ messageId, pinnedBy, pinnedAt }) => {
+  setMessages((prev) =>
+    prev.map((m) =>
+      m._id === messageId
+        ? { ...m, isPinned: true, pinnedBy, pinnedAt }
+        : { ...m, isPinned: false }
+    )
+  );
+});
+
+socket.on("messageUnpinned", ({ messageId }) => {
+  setMessages((prev) =>
+    prev.map((m) =>
+      m._id === messageId
+        ? { ...m, isPinned: false, pinnedBy: undefined, pinnedAt: undefined }
+        : m
+    )
+  );
+});
+
+
     // ⭐⭐⭐ REALTIME ĐÃ XEM
     socket.on("messagesRead", ({ roomId, userId: reader }) => {
       if (roomId !== currentRoom.current) return;
@@ -76,6 +116,7 @@ export function useChat(userId?: string | null) {
         )
       );
     });
+    
 
     return () => {
       socket.off("onlineUsers");
@@ -83,6 +124,9 @@ export function useChat(userId?: string | null) {
       socket.off("receiveMessage");
       socket.off("reactionUpdated");
       socket.off("messagesRead");
+      socket.off("messagePinned");
+socket.off("messageUnpinned");
+
     };
   }, []);
 
@@ -109,7 +153,7 @@ export function useChat(userId?: string | null) {
 
   // 🔵 Gửi tin nhắn
   const sendMessage = useCallback(
-    (content: string, images?: string[], fileUrl?: string) => {
+    (content: string, images?: string[], fileUrl?: string, replyTo?: ReplyPreview | null) => {
       const socket = socketRef.current;
       if (!socket || !currentRoom.current || !userId) return;
 
@@ -121,6 +165,7 @@ export function useChat(userId?: string | null) {
         fileUrl: fileUrl || "",
         userId,
         roomId: currentRoom.current,
+        replyTo: replyTo ?? null,
       });
 
       // ⭐ Khi gửi xong → stopTyping

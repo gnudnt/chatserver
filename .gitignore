@@ -1,3 +1,10 @@
+# env
+.env
+
+# uploads (RẤT QUAN TRỌNG)
+actions/actions/uploads
+
+
 "use client";
 
 import { useEffect, useRef, useState } from "react";
@@ -45,13 +52,6 @@ const [replyingMessage, setReplyingMessage] = useState<{
   // LOCAL EDIT CACHE 
   const [editedCache, setEditedCache] = useState<Record<string, string>>({});
 
-   const messageListRef = useRef<HTMLDivElement | null>(null);
-const [showNewMsgBtn, setShowNewMsgBtn] = useState(false);
-const [isAtBottom, setIsAtBottom] = useState(true);
-const lastMsgIdRef = useRef<string | null>(null);
-const [hasUnreadNewMsg, setHasUnreadNewMsg] = useState(false);
-
-
   //  DELETE MENU STATE (
   const [openDeleteFor, setOpenDeleteFor] = useState<{
     messageId: string;
@@ -91,58 +91,10 @@ const [highlightMessageId, setHighlightMessageId] = useState<string | null>(null
     setOpenReactionFor(messageId);
   };
 
-  // scroll khi có tin mới
-useEffect(() => {
-  if (!messages.length) return;
-
-  const last = messages[messages.length - 1];
-  if (!last?._id) return;
-
-  if (lastMsgIdRef.current === last._id) return;
-  lastMsgIdRef.current = last._id;
-
-  // ✅ CHÍNH MÌNH GỬI → LUÔN SCROLL
-  if (last.userId === userId) {
-    requestAnimationFrame(() => {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-    });
-    setHasUnreadNewMsg(false);
-    return;
-  }
-
-  // ✅ NGƯỜI KHÁC GỬI
-  if (isAtBottom) {
-    requestAnimationFrame(() => {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-    });
-  } else {
-    setHasUnreadNewMsg(true);
-  }
-}, [messages, isAtBottom, userId]);
-
-
-
-   // THEO DÕI NGƯỜI DÙNG CÓ ĐANG Ở CUỐI KHÔNG
+  // Auto scroll
   useEffect(() => {
-  const el = messageListRef.current;
-  if (!el) return;
-
-  const handleScroll = () => {
-    const distanceFromBottom =
-      el.scrollHeight - el.scrollTop - el.clientHeight;
-
-    const atBottom = distanceFromBottom < 80;
-    setIsAtBottom(atBottom);
-
-    if (atBottom) {
-      setHasUnreadNewMsg(false);
-    }
-  };
-
-  el.addEventListener("scroll", handleScroll);
-  return () => el.removeEventListener("scroll", handleScroll);
-}, []);
-
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
   // Close reaction bar
   useEffect(() => {
@@ -162,12 +114,7 @@ useEffect(() => {
 
   const isLastMine = lastMessage?.userId === userId;
   const isSeen = isLastMine && lastMessage?.readBy?.includes(otherUserId);
-  const pinnedMessage = [...roomMessages]
-  .reverse()
-  .find((m) => m.isPinned);
-
-
-
+  const pinnedMessage = roomMessages.find((m) => m.isPinned);
 // 📌 XÁC ĐỊNH NỘI DUNG HIỂN THỊ CHO THANH GHIM
 const getPinnedPreview = (msg: Message) => {
   if (msg.images && msg.images.length > 0) {
@@ -291,17 +238,6 @@ useEffect(() => {
   };
 }, [openActionFor]);
 
-// ✅ AUTO SCROLL KHI ĐỔI ROOM
-useEffect(() => {
-  lastMsgIdRef.current = null;
-  setHasUnreadNewMsg(false);
-
-  requestAnimationFrame(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "auto" });
-  });
-}, [roomId]);
-
-
 
   // ⭐⭐⭐ REALTIME TYPING
   useEffect(() => {
@@ -411,11 +347,7 @@ useEffect(() => {
 
 
       {/* MESSAGE LIST */}
-      <div
-  ref={messageListRef}
-  className="flex-1 space-y-4 overflow-y-auto bg-[#18191A] p-4"
->
-
+      <div className="flex-1 space-y-4 overflow-y-auto bg-[#18191A] p-4">
         {roomMessages
           .filter((msg) => !hiddenMessages.includes(msg._id!))
           .map((msg, idx, arr) => {
@@ -519,13 +451,12 @@ useEffect(() => {
   className="w-full px-3 py-2 text-left hover:bg-[#3A3B3C]"
   onClick={() => {
     if (!msg._id) return;
-if (msg.isPinned) {
-  socket.emit("unpinMessage", { messageId: msg._id });
-} else {
-  socket.emit("pinMessage", { messageId: msg._id });
-}
 
-
+    if (msg.isPinned) {
+      socket.emit("unpinMessage", { messageId: msg._id });
+    } else {
+      socket.emit("pinMessage", { messageId: msg._id });
+    }
 
     setOpenActionFor(null);
   }}
@@ -844,22 +775,6 @@ if (msg.isPinned) {
             </div>
           </div>
         )}
-
-        {hasUnreadNewMsg && (
-  <div className="sticky bottom-4 flex justify-center z-40">
-    <button
-      className="flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm text-white shadow-lg"
-      onClick={() => {
-        bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-        setHasUnreadNewMsg(false);
-      }}
-    >
-      ⬇️ Có tin nhắn mới
-    </button>
-  </div>
-)}
-
-
 
         <div ref={bottomRef} />
       </div>

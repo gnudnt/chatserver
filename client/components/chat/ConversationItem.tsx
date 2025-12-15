@@ -8,7 +8,29 @@ interface ConversationItemProps {
   lastMessage?: string;
   unread: number;
   onClick: () => void;
+  highlight?: string;
 }
+
+function highlightText(text: string, keyword?: string) {
+  if (!keyword) return text;
+
+  const lowerText = text.toLowerCase();
+  const lowerKeyword = keyword.toLowerCase();
+
+  // chỉ highlight nếu match ở đầu TỪ
+  const index = lowerText.indexOf(lowerKeyword);
+  if (index !== 0) return text;
+
+  return (
+    <>
+      <span className="text-blue-400 font-semibold">
+        {text.slice(0, keyword.length)}
+      </span>
+      {text.slice(keyword.length)}
+    </>
+  );
+}
+
 
 export default function ConversationItem({
   name,
@@ -17,6 +39,7 @@ export default function ConversationItem({
   lastMessage,
   unread,
   onClick,
+  highlight,
 }: ConversationItemProps) {
   return (
     <div
@@ -33,7 +56,9 @@ export default function ConversationItem({
         </div>
 
         <div className="flex flex-col">
-          <span className="font-semibold">{name}</span>
+<span className="font-semibold">
+  {highlightText(name, highlight)}
+</span>
           <span className="text-xs text-gray-400 truncate w-[140px]">
             {lastMessage || "…"}
           </span>
