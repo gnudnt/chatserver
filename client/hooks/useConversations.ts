@@ -27,7 +27,11 @@ export function useConversations(currentUser: string, activeRoom: string | null)
   useEffect(() => {
     if (!currentUser) return;
 
-    fetch(`http://localhost:4000/api/conversations/${currentUser}`)
+const ACTIONS_URL =
+  process.env.NEXT_PUBLIC_ACTIONS_URL || "http://localhost:8888";
+
+fetch(`/api/conversations?userId=${currentUser}`)
+
       .then((res) => res.json())
       .then((data) => {
         const mapped = data.map((c: any) => ({

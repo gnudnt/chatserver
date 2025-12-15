@@ -1,34 +1,43 @@
-import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
-import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import mongoose from "mongoose"; 
+import { NestFactory } from "@nestjs/core";
+import { AppModule } from "./app.module";
+import { SwaggerModule, DocumentBuilder } from "@nestjs/swagger";
+import { NestExpressApplication } from "@nestjs/platform-express";
+import path from "path";
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
 
-  app.enableCors();
+  await mongoose.connect(process.env.MONGO_URI!);
+  console.log("MongoDB connected (Actions/NestJS)");
 
-  // Use DocumentBuilder to create a new Swagger document configuration
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  //  CORS cho client
+  app.enableCors({
+    origin: "http://localhost:3000",
+    credentials: true,
+  });
+
+  //  STATIC UPLOADS
+  app.useStaticAssets(
+    path.join(process.cwd(), "actions/uploads"),
+    { prefix: "/uploads" }
+  );
+
+  //  SWAGGER
   const config = new DocumentBuilder()
-    .setTitle('Staff APIs')
-    .setDescription(
-      `
-    - Authentication: Bearer token
-    - Pagination: /endpoint?take=50&page=2
-    - Filter: ?filters={"status":"done","from":"2024-06-09T07:04:02.381Z","to":"2024-06-10T18:33:36.760Z"}
-    `,
-    )
-    .setVersion('0.1') // Set the version of the API
-    .addBearerAuth({
-      name: 'authorization',
-      in: 'header',
-      description: 'Authentication token',
-      type: 'apiKey',
-    })
+    .setTitle("Staff APIs")
+    .setDescription("API Docs")
+    .setVersion("0.1")
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup("docs", app, document);
 
-  SwaggerModule.setup('docs', app, document);
-  await app.listen(8888);
+  const port = process.env.PORT || 8888;
+  await app.listen(port);
+
+  console.log(`🚀 Actions API running on http://localhost:${port}`);
 }
+
 bootstrap();

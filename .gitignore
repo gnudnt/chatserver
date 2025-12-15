@@ -1,7 +1,10 @@
 # env
 .env
 
-# uploads (RẤT QUAN TRỌNG)
+# uploads 
 actions/actions/uploads
+
+# node_modules
+node_modules
 
 
