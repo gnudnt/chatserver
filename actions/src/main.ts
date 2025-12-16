@@ -20,7 +20,7 @@ async function bootstrap() {
 
   //  STATIC UPLOADS
   app.useStaticAssets(
-    path.join(process.cwd(), "actions/uploads"),
+    path.join(__dirname, "../uploads"),
     { prefix: "/uploads" }
   );
 

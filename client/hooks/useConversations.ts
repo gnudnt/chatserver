@@ -27,12 +27,12 @@ export function useConversations(currentUser: string, activeRoom: string | null)
   useEffect(() => {
     if (!currentUser) return;
 
-const ACTIONS_URL =
-  process.env.NEXT_PUBLIC_ACTIONS_URL || "http://localhost:8888";
-
-fetch(`/api/conversations?userId=${currentUser}`)
-
-      .then((res) => res.json())
+    const ACTIONS_URL = process.env.NEXT_PUBLIC_ACTIONS_URL || "http://localhost:8888";
+    fetch(`${ACTIONS_URL}/api/conversations?userId=${currentUser}`)
+      .then((res) => {
+        if (!res.ok) throw new Error("API error");
+        return res.json();
+      })
       .then((data) => {
         const mapped = data.map((c: any) => ({
           ...c,
@@ -45,6 +45,11 @@ fetch(`/api/conversations?userId=${currentUser}`)
               new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
           )
         );
+      })
+      .catch((err) => {
+        setConversations([]);
+        // Optional: log error
+        // console.error("Failed to fetch conversations", err);
       });
   }, [currentUser]);
 

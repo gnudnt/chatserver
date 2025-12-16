@@ -2,7 +2,8 @@ export async function uploadFile(file: File): Promise<string> {
   const formData = new FormData();
   formData.append("file", file);
 
-  const res = await fetch("http://localhost:4000/api/upload", {
+  const API_URL = process.env.NEXT_PUBLIC_ACTIONS_URL || "http://localhost:8888";
+  const res = await fetch(`${API_URL}/api/upload`, {
     method: "POST",
     body: formData,
   });
@@ -14,5 +15,5 @@ export async function uploadFile(file: File): Promise<string> {
   }
 
   // backend trả về "/uploads/xxx", build thành full URL
-  return `http://localhost:4000${data.url}`;
+  return `${API_URL}${data.url}`;
 }

@@ -58,9 +58,9 @@ export default function ChatInput({
   }, []);
 
   // ✅ RESET REPLY KHI ĐỔI ROOM
-useEffect(() => {
-  clearReply?.();
-}, [roomId]);
+  useEffect(() => {
+    clearReply?.();
+  }, [roomId]);
 
   /* YPING EVENT (GIỮ NGUYÊN)*/
   const emitTyping = () => {
@@ -96,7 +96,7 @@ useEffect(() => {
       return;
     }
 
-if (!message.trim() && !previewUrl) return;
+    if (!message.trim() && !previewUrl) return;
 
     sendMessage(message.trim(), undefined, undefined, replyingMessage ?? null);
     setMessage("");
@@ -114,9 +114,10 @@ if (!message.trim() && !previewUrl) return;
 
   /* UPLOAD FILE (GIỮ NGUYÊN)*/
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files) return;
+    if (!e.target.files || e.target.files.length === 0) return;
 
     const file = e.target.files[0];
+    if (!file) return;
     setPreviewName(file.name);
 
     try {
@@ -132,7 +133,6 @@ if (!message.trim() && !previewUrl) return;
 
   return (
     <div className="flex flex-col gap-2 p-2 border-t border-gray-700 bg-[#242526] relative">
-
       {/*  REPLY PREVIEW (NEW) */}
       {replyingMessage && (
         <div className="flex items-start justify-between rounded-lg bg-[#3A3B3C] px-3 py-2 text-sm text-white">

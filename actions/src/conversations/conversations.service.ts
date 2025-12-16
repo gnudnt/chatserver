@@ -12,7 +12,7 @@ export class ConversationsService {
 
     return conversations.map((c: any) => ({
       ...c,
-      unreadCount: c.unread?.get(userId) || 0,
+      unreadCount: c.unread?.[userId] || 0,
     }));
   }
 }
