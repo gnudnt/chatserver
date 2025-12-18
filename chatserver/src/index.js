@@ -10,7 +10,6 @@ import ConversationModel from "./models/Conversation.js";
 
 dotenv.config({ path: path.join(process.cwd(), ".env") });
 
-// HTTP server thuần (không express)
 const server = http.createServer();
 
 // Socket.io
@@ -24,13 +23,13 @@ const io = new Server(server, {
   allowEIO3: true,
 });
 
-// userId -> Set(socketId)
+// userId 
 const onlineUsers = new Map();
 
-// socketId -> userId
+// socketId 
 const socketUserMap = new Map();
 
-// socketId -> roomId
+// socketId 
 const userActiveRoom = new Map();
 
 io.on("connection", (socket) => {
@@ -180,7 +179,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  // REVOKE MESSAGE — THU HỒI CHO MỌI NGƯỜI
+  // REVOKE MESSAGE 
   socket.on("revokeMessage", async ({ messageId }) => {
     try {
       const userId = socketUserMap.get(socket.id);

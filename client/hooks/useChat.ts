@@ -177,7 +177,7 @@ socket.off("messageUnpinned");
     [userId]
   );
 
-  // 🔵 Gửi reaction
+  // Gửi reaction
   const sendReaction = useCallback(
     (messageId: string, type: string) => {
       const socket = socketRef.current;
@@ -192,7 +192,7 @@ socket.off("messageUnpinned");
     [userId]
   );
 
-  // ⭐⭐⭐ TÍNH NĂNG MỚI — TYPING ⭐⭐⭐
+  //  TYPING 
 
   const sendTyping = useCallback(
     (roomId: string) => {

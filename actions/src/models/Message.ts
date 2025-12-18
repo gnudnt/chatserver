@@ -5,13 +5,13 @@ export interface IMessage extends Document {
   images?: string[];
   fileUrl?: string;
 
-  // ✅ ADD FOR REPLY MESSAGE (NEW)
+  // ADD FOR REPLY MESSAGE 
   replyTo?: {
-    messageId: string;        // id message được reply
-    userId: string;           // user của message gốc
-    content?: string;         // preview text
-    images?: string[];        // preview ảnh
-    fileUrl?: string;         // preview file
+    messageId: string;       
+    userId: string;          
+    content?: string;         
+    images?: string[];        
+    fileUrl?: string;         
   };
 
   userId: string;
@@ -21,11 +21,11 @@ export interface IMessage extends Document {
   reactions: { userId: string; type: string }[];
   isRevoked?: boolean;
 
-  // ✅ ADD FOR EDIT MESSAGE (GIỮ NGUYÊN)
+  //  ADD FOR EDIT MESSAGE 
   isEdited?: boolean;
   editedAt?: Date;
 
-    // 📌 ADD FOR PIN MESSAGE (NEW)
+    //  ADD FOR PIN MESSAGE 
   isPinned?: boolean;
   pinnedAt?: Date;
   pinnedBy?: string;
@@ -38,14 +38,14 @@ const MessageSchema: Schema<IMessage> = new Schema(
     images: [{ type: String }],
     fileUrl: { type: String },
 
-    // ✅ ADD FOR REPLY MESSAGE (NEW)
+    //  ADD FOR REPLY MESSAGE 
     replyTo: {
       messageId: { type: String },
       userId: { type: String },
       content: { type: String },
       images: [{ type: String }],
       fileUrl: { type: String },
-      _id: false, // ✅ rất quan trọng – không tạo _id phụ
+      _id: false, // 
     },
 
     userId: { type: String, required: true },
@@ -62,11 +62,11 @@ const MessageSchema: Schema<IMessage> = new Schema(
 
     isRevoked: { type: Boolean, default: false },
 
-    // ✅ ADD FOR EDIT MESSAGE (GIỮ NGUYÊN)
+    //  ADD FOR EDIT MESSAGE 
     isEdited: { type: Boolean, default: false },
     editedAt: { type: Date },
 
-        // 📌 ADD FOR PIN MESSAGE (NEW)
+        // ADD FOR PIN MESSAGE 
     isPinned: { type: Boolean, default: false },
     pinnedAt: { type: Date },
     pinnedBy: { type: String },
