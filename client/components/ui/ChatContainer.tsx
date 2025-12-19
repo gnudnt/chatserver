@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import ChatInput from "./ChatInput";
 import type { Message } from "@/hooks/useChat";
 import { getSocket } from "@/utils/socketSingleton";
+import MessageSearchPanel from "../chat/MessageSearchPanel";
+
 
 interface ChatContainerProps {
   userId: string;
@@ -50,9 +52,24 @@ const [showNewMsgBtn, setShowNewMsgBtn] = useState(false);
 const [isAtBottom, setIsAtBottom] = useState(true);
 const lastMsgIdRef = useRef<string | null>(null);
 const [hasUnreadNewMsg, setHasUnreadNewMsg] = useState(false);
+const CHATSERVER_URL = process.env.NEXT_PUBLIC_CHATSERVER_URL!;
 
 
-  //  DELETE MENU STATE (
+const resolveImageUrl = (img: string) => {
+  if (!img) return "";
+
+  if (img.startsWith("http://") || img.startsWith("https://")) {
+    return img;
+  }
+
+  return `${CHATSERVER_URL}${img}`;
+};
+
+
+const [pendingScrollId, setPendingScrollId] = useState<string | null>(null);
+
+
+  //  DELETE MENU STATE 
   const [openDeleteFor, setOpenDeleteFor] = useState<{
     messageId: string;
     isMine: boolean;
@@ -70,10 +87,10 @@ const [hasUnreadNewMsg, setHasUnreadNewMsg] = useState(false);
     }
   }, [userId, roomId]);
 
-  //  REVOKED MESSAGES (FOR EVERYONE)
+  //  REVOKED MESSAGES 
   const [revokedMessages, setRevokedMessages] = useState<string[]>([]);
 
-// ⭐ SCROLL + HIGHLIGHT REPLY TARGET
+//  SCROLL + HIGHLIGHT REPLY TARGET
 const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
 const [highlightMessageId, setHighlightMessageId] = useState<string | null>(null);
 
@@ -84,6 +101,11 @@ const [highlightMessageId, setHighlightMessageId] = useState<string | null>(null
   const socket = getSocket();
 
   const actionMenuRef = useRef<HTMLDivElement | null>(null);
+
+  const [openSearch, setOpenSearch] = useState(false);
+const [extraMessages, setExtraMessages] = useState<Message[]>([]);
+
+  
 
 
   const handleRightClick = (e: React.MouseEvent, messageId: string) => {
@@ -101,7 +123,7 @@ useEffect(() => {
   if (lastMsgIdRef.current === last._id) return;
   lastMsgIdRef.current = last._id;
 
-  // ✅ CHÍNH MÌNH GỬI → LUÔN SCROLL
+  //  CHÍNH MÌNH GỬI → LUÔN SCROLL
   if (last.userId === userId) {
     requestAnimationFrame(() => {
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -110,7 +132,6 @@ useEffect(() => {
     return;
   }
 
-  // ✅ NGƯỜI KHÁC GỬI
   if (isAtBottom) {
     requestAnimationFrame(() => {
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -119,8 +140,6 @@ useEffect(() => {
     setHasUnreadNewMsg(true);
   }
 }, [messages, isAtBottom, userId]);
-
-
 
    // THEO DÕI NGƯỜI DÙNG CÓ ĐANG Ở CUỐI KHÔNG
   useEffect(() => {
@@ -153,7 +172,13 @@ useEffect(() => {
 
   const isOtherOnline = onlineUsers.includes(otherUserId);
 
-  const roomMessages = messages.filter((m) => m.roomId === roomId);
+const roomMessages = [
+  ...extraMessages,
+  ...messages.filter((m) => m.roomId === roomId),
+].filter(
+  (msg, index, self) =>
+    index === self.findIndex((m) => m._id === msg._id)
+);
 
   const visibleMessages = roomMessages.filter(
     (m) => !hiddenMessages.includes(m._id!)
@@ -168,7 +193,7 @@ useEffect(() => {
 
 
 
-// 📌 XÁC ĐỊNH NỘI DUNG HIỂN THỊ CHO THANH GHIM
+//  XÁC ĐỊNH NỘI DUNG HIỂN THỊ CHO THANH GHIM
 const getPinnedPreview = (msg: Message) => {
   if (msg.images && msg.images.length > 0) {
     return "Ảnh";
@@ -181,8 +206,61 @@ const getPinnedPreview = (msg: Message) => {
   return msg.content || "Tin nhắn";
 };
 
+useEffect(() => {
+  if (!pendingScrollId) return;
 
-  // ⭐⭐⭐ REALTIME SEEN
+  // nếu message đã render → thôi
+  if (messageRefs.current[pendingScrollId]) return;
+
+  const fetchMessage = async () => {
+    try {
+      const res = await fetch(
+        `http://localhost:3001/messages/${pendingScrollId}`
+      );
+      const msg = await res.json();
+
+      if (msg && msg._id && msg.roomId === roomId) {
+  setExtraMessages((prev) => [msg, ...prev]);
+}
+
+    } catch (e) {
+      console.error("Load message failed", e);
+    }
+  };
+
+  fetchMessage();
+}, [pendingScrollId]);
+
+
+useEffect(() => {
+  if (!pendingScrollId) return;
+
+  // đợi DOM render xong thật sự
+  const raf = requestAnimationFrame(() => {
+    const el = messageRefs.current[pendingScrollId];
+    if (!el) return;
+
+    el.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+
+    setHighlightMessageId(pendingScrollId);
+
+    setTimeout(() => {
+      setHighlightMessageId(null);
+    }, 1500);
+
+    setPendingScrollId(null);
+  });
+
+  return () => cancelAnimationFrame(raf);
+}, [pendingScrollId, extraMessages]);
+
+
+
+
+  //  REALTIME SEEN
   useEffect(() => {
     const handler = ({
       roomId: rId,
@@ -193,7 +271,6 @@ const getPinnedPreview = (msg: Message) => {
     }) => {
       if (rId !== roomId) return;
 
-      // ⚠️ (Giữ nguyên logic cũ của bạn)
       roomMessages.forEach((m) => {
         if (!m.readBy) m.readBy = [];
         if (!m.readBy.includes(reader)) {
@@ -204,10 +281,10 @@ const getPinnedPreview = (msg: Message) => {
 
     socket.on("messagesRead", handler);
     return () => socket.off("messagesRead", handler);
-  }, [messages, roomId]); // giữ nguyên deps theo code cũ của bạn
+  }, [messages, roomId]); 
   
 
-  // ⭐⭐⭐ REALTIME REVOKE MESSAGE (FOR EVERYONE)
+  //  REALTIME REVOKE MESSAGE (FOR EVERYONE)
   useEffect(() => {
     const handler = ({ messageId }: { messageId: string }) => {
       setRevokedMessages((prev) =>
@@ -221,7 +298,7 @@ const getPinnedPreview = (msg: Message) => {
 
 
 
-  // ❌ CLICK RA NGOÀI → HỦY EDIT
+  //  CLICK RA NGOÀI → HỦY EDIT
 useEffect(() => {
   if (!editingId) return;
 
@@ -242,7 +319,7 @@ useEffect(() => {
 }, [editingId]);
 
 
- // ✅ REALTIME EDIT MESSAGE (FIX) — hỗ trợ mọi payload server có thể emit
+ // REALTIME EDIT MESSAGE 
 useEffect(() => {
   const handler = (payload: any) => {
     // Case 1: server emit { messageId, content }
@@ -264,14 +341,14 @@ useEffect(() => {
   return () => socket.off("messageEdited", handler);
 }, [socket, editingId]);
 
-  // reset cache theo room để khỏi "dính" room khác (an toàn)
+  // reset cache theo room để khỏi "dính" room khác
   useEffect(() => {
     setEditedCache({});
     setEditingId(null);
     setEditText("");
   }, [roomId]);
 
-  // ❌ CLICK RA NGOÀI → ĐÓNG ACTION MENU
+  //  CLICK RA NGOÀI → ĐÓNG ACTION MENU
 useEffect(() => {
   if (!openActionFor) return;
 
@@ -291,7 +368,7 @@ useEffect(() => {
   };
 }, [openActionFor]);
 
-// ✅ AUTO SCROLL KHI ĐỔI ROOM
+//  AUTO SCROLL KHI ĐỔI ROOM
 useEffect(() => {
   lastMsgIdRef.current = null;
   setHasUnreadNewMsg(false);
@@ -303,7 +380,7 @@ useEffect(() => {
 
 
 
-  // ⭐⭐⭐ REALTIME TYPING
+  //  REALTIME TYPING
   useEffect(() => {
     const handleTyping = ({
       roomId: r,
@@ -346,38 +423,52 @@ useEffect(() => {
   return (
     <div className="flex h-full flex-col">
       {/* HEADER */}
-      <div className="flex items-center gap-3 border-b border-[#3A3B3C] bg-[#242526] px-4 py-3">
-        <div className="relative h-12 w-12 rounded-full bg-gray-500">
-          {isOtherOnline && (
-            <span className="absolute -right-0.5 -bottom-0.5 h-3 w-3 rounded-full bg-green-500 border-2 border-[#242526]" />
-          )}
-        </div>
+<div className="flex items-center justify-between border-b border-[#3A3B3C] bg-[#242526] px-4 py-3 relative">
+  {/*  AVATAR  */}
+  <div className="flex items-center gap-3">
+    <div className="relative h-12 w-12 rounded-full bg-gray-500">
+      {isOtherOnline && (
+        <span className="absolute -right-0.5 -bottom-0.5 h-3 w-3 rounded-full bg-green-500 border-2 border-[#242526]" />
+      )}
+    </div>
 
-        <div className="flex flex-col">
-          <h3 className="text-base font-semibold">{otherUserId}</h3>
+    <div className="flex flex-col">
+      <h3 className="text-base font-semibold">{otherUserId}</h3>
 
-          {isTyping ? (
-            <span className="text-xs text-blue-400">Đang nhập...</span>
+      {isTyping ? (
+        <span className="text-xs text-blue-400">Đang nhập...</span>
+      ) : (
+        <div className="flex items-center gap-1">
+          {isOtherOnline ? (
+            <>
+              <span className="inline-block h-2 w-2 rounded-full bg-green-500" />
+              <span className="text-xs text-green-400">Online</span>
+            </>
           ) : (
-            <div className="flex items-center gap-1">
-              {isOtherOnline ? (
-                <>
-                  <span className="inline-block h-2 w-2 rounded-full bg-green-500" />
-                  <span className="text-xs text-green-400">Online</span>
-                </>
-              ) : (
-                <>
-                  <span className="inline-block h-2 w-2 rounded-full bg-gray-400" />
-                  <span className="text-xs text-gray-400">Offline</span>
-                </>
-              )}
-            </div>
+            <>
+              <span className="inline-block h-2 w-2 rounded-full bg-gray-400" />
+              <span className="text-xs text-gray-400">Offline</span>
+            </>
           )}
         </div>
-      </div>
+      )}
+    </div>
+  </div>
+
+  {/* SEARCH ICON */}
+  <button
+    type="button"
+    className="flex h-10 w-10 items-center justify-center rounded-full text-gray-300 hover:bg-[#3A3B3C] hover:text-white transition"
+    title="Tìm trong đoạn chat"
+    onClick={() => setOpenSearch((prev) => !prev)}
+  >
+    🔍
+  </button>
+</div>
 
 
-      {/* 📌 PINNED MESSAGE BAR */}
+
+      {/*  PINNED MESSAGE BAR */}
 {pinnedMessage && (
   <div className="flex items-center justify-between bg-yellow-500/10 px-4 py-2 text-sm text-yellow-300 border-b border-yellow-500/30">
     <div className="flex items-center gap-2 truncate">
@@ -407,6 +498,15 @@ useEffect(() => {
   </div>
 )}
 
+{openSearch && (
+  <MessageSearchPanel
+    roomId={roomId}
+    onSelect={(messageId) => {
+      setPendingScrollId(messageId);
+      setOpenSearch(false);
+    }}
+  />
+)}
 
 
 
@@ -422,7 +522,7 @@ useEffect(() => {
             const isMe = msg.userId === userId;
             const nextMsg = arr[idx + 1];
 
-            // ✅ FIX RELOAD REVOKE
+            //  RELOAD REVOKE
             const isRevoked = !!msg.isRevoked || revokedMessages.includes(msg._id!);
 
             const showAvatar =
@@ -431,11 +531,11 @@ useEffect(() => {
             const avatarSrc = `/avatars/${msg.userId}.png`;
             const reactions = msg.reactions ?? [];
 
-            // ✅ content hiển thị (ưu tiên cache realtime, fallback msg.content)
+            // content hiển thị 
             const displayContent =
               (msg._id && editedCache[msg._id]) ? editedCache[msg._id] : msg.content;
 
-            // ✅ show "(đã chỉnh sửa)"
+            // edited
             const showEditedTag = !!(msg.isEdited || (msg._id && editedCache[msg._id]));
 
             return (
@@ -447,7 +547,9 @@ useEffect(() => {
     }
   }}
   className={`flex gap-2 ${isMe ? "justify-end" : "justify-start"}`}
+
 >
+
                 {!isMe ? (
                   showAvatar ? (
                     <img
@@ -511,7 +613,7 @@ useEffect(() => {
         setOpenActionFor(null);
       }}
     >
-      ↩️ Trả lời
+      ↩️ Reply
     </button>
 
     {/* 📌 PIN / UNPIN */}
@@ -530,11 +632,11 @@ if (msg.isPinned) {
     setOpenActionFor(null);
   }}
 >
-  {msg.isPinned ? "📌 Bỏ ghim" : "📌 Ghim"}
+  {msg.isPinned ? "📌 Unpin" : "📌 Pin"}
 </button>
 
 
-    {/* ✏️ EDIT — chỉ tin của mình */}
+    {/*  EDIT — chỉ tin của mình */}
     {isMe && !isRevoked && msg.content && (
       <button
         className="w-full px-3 py-2 text-left hover:bg-[#3A3B3C]"
@@ -544,11 +646,11 @@ if (msg.isPinned) {
           setOpenActionFor(null);
         }}
       >
-        ✏️ Chỉnh sửa
+        ✏️ Edit
       </button>
     )}
 
-    {/* 🗑️ DELETE */}
+    {/*  DELETE */}
     <button
       className="w-full px-3 py-2 text-left text-red-400 hover:bg-[#3A3B3C]"
       onClick={() => {
@@ -559,7 +661,7 @@ if (msg.isPinned) {
         setOpenActionFor(null);
       }}
     >
-      🗑️ Thu hồi
+      🗑️ Recall
     </button>
   </div>
 )}
@@ -578,7 +680,7 @@ if (msg.isPinned) {
 ) : (
   msg.content && (
     <>
-      {/*  REPLY PREVIEW — PHẦN ĐƯỢC THÊM */}
+      {/*  REPLY PREVIEW  */}
       {msg.replyTo && (
   <div
     className={`
@@ -600,7 +702,7 @@ if (msg.isPinned) {
 
         setHighlightMessageId(targetId);
 
-        // ⏱️ tự tắt highlight sau 1.5s
+        // tắt highlight 
         setTimeout(() => {
           setHighlightMessageId(null);
         }, 1500);
@@ -625,9 +727,9 @@ if (msg.isPinned) {
         </div>
       )}
 
-      {/* 💬 MESSAGE BUBBLE — GIỮ NGUYÊN */}
-      <div
-        className={`
+   {/* 💬 MESSAGE BUBBLE — CHỈ HIGHLIGHT KHI LÀ TEXT */}
+<div
+  className={`
     rounded-2xl px-4 py-2 shadow transition-all duration-300
     ${
       isMe
@@ -635,17 +737,20 @@ if (msg.isPinned) {
         : "rounded-bl-none bg-[#3A3B3C] text-white"
     }
     ${
-      msg._id === highlightMessageId
-        ? "ring-2 ring-blue-400 bg-blue-500/10 animate-pulse"
+      msg._id === highlightMessageId &&
+      (!msg.images || msg.images.length === 0) &&
+      !msg.fileUrl
+        ? "ring-2 ring-blue-400 animate-pulse"
         : ""
     }
   `}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          if (!msg._id) return;
-          setOpenReactionFor(msg._id);
-        }}
-      >
+  onContextMenu={(e) => {
+    e.preventDefault();
+    if (!msg._id) return;
+    setOpenReactionFor(msg._id);
+  }}
+>
+
         {editingId === msg._id ? (
           <input
             value={editText}
@@ -700,69 +805,80 @@ if (msg.isPinned) {
 )}
 
                   {!revokedMessages.includes(msg._id!) &&
-                    msg.images &&
-                    msg.images.length > 0 && (
-                      <div
-  className={`
-    mt-2 space-y-2 rounded-xl p-1 transition-all duration-300
-    ${msg._id === highlightMessageId ? "ring-2 ring-blue-400 bg-blue-500/10 animate-pulse" : ""}
-  `}
->
+  msg.images &&
+  msg.images.length > 0 && (
+    <div className="mt-2 space-y-2">
+      {msg.images.map((img, k) => (
+        <div
+          key={k}
+          className={`
+            relative inline-block rounded-xl
+            transition-all duration-300
+            ${
+              msg._id === highlightMessageId
+                ? "ring-2 ring-blue-400 animate-pulse"
+                : ""
+            }
+          `}
+        >
+          {/* 📌 PIN ICON OVER IMAGE */}
+          {msg.isPinned && (
+            <span className="absolute top-2 right-2 z-10 text-yellow-400 text-lg drop-shadow">
+              📌
+            </span>
+          )}
 
-  {msg.images.map((img, k) => (
-  <div key={k} className="relative inline-block">
-    {/* 📌 PIN ICON OVER IMAGE */}
-    {msg.isPinned && (
-      <span className="absolute top-2 right-2 z-10 text-yellow-400 text-lg drop-shadow">
-        📌
-      </span>
-    )}
-
-    <img
-      src={img}
-      className="
-        max-h-[300px] max-w-[260px]
-        cursor-pointer rounded-xl shadow
-        transition-all duration-300
-      "
-      onClick={() => window.open(img, "_blank")}
-      onContextMenu={(e) => handleRightClick(e, msg._id!)}
-    />
-  </div>
-))}
-
-
-                      </div>
-                    )}
-
-                  {!revokedMessages.includes(msg._id!) &&
-                    msg.fileUrl &&
-                    (!msg.images || msg.images.length === 0) && (
-                      <div className="relative inline-block mt-2">
-  {/* 📌 PIN ICON OVER FILE */}
-  {msg.isPinned && (
-    <span className="absolute -top-2 -right-2 z-10 text-yellow-400 text-lg drop-shadow">
-      📌
-    </span>
+          <img
+            src={resolveImageUrl(img)}
+            className="max-h-[300px] max-w-[260px] cursor-pointer rounded-xl shadow"
+            onClick={() => window.open(resolveImageUrl(img), "_blank")}
+            onContextMenu={(e) => handleRightClick(e, msg._id!)}
+          />
+        </div>
+      ))}
+    </div>
   )}
 
-  <a
-    href={msg.fileUrl}
-    target="_blank"
-    className={`
-      rounded-lg px-3 py-2 text-sm shadow
-      transition-all duration-300
-      ${isMe ? "bg-primary text-white" : "bg-gray-200 text-gray-800"}
-    `}
-    onContextMenu={(e) => {
-      e.preventDefault();
-      if (!msg._id) return;
-      setOpenReactionFor(msg._id);
-    }}
-  >
-    📎 {msg.fileUrl.split("/").pop()}
-  </a>
-</div>)}
+
+                  {!revokedMessages.includes(msg._id!) &&
+  msg.fileUrl &&
+  (!msg.images || msg.images.length === 0) && (
+    <div
+      className={`
+        relative inline-block mt-2 rounded-lg
+        transition-all duration-300
+        ${
+          msg._id === highlightMessageId
+            ? "ring-2 ring-blue-400 animate-pulse"
+            : ""
+        }
+      `}
+    >
+      {/* 📌 PIN ICON OVER FILE */}
+      {msg.isPinned && (
+        <span className="absolute -top-2 -right-2 z-10 text-yellow-400 text-lg drop-shadow">
+          📌
+        </span>
+      )}
+
+      <a
+        href={msg.fileUrl}
+        target="_blank"
+        className={`
+          block rounded-lg px-3 py-2 text-sm shadow
+          ${isMe ? "bg-primary text-white" : "bg-gray-200 text-gray-800"}
+        `}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          if (!msg._id) return;
+          setOpenReactionFor(msg._id);
+        }}
+      >
+        📎 {msg.fileUrl.split("/").pop()}
+      </a>
+    </div>
+  )}
+
 
 
                   {openReactionFor === msg._id && (

@@ -19,12 +19,10 @@ interface ChatInputProps {
     content: string,
     images?: string[],
     fileUrl?: string,
-    replyTo?: ReplyPreview | null // ✅ ADD
+    replyTo?: ReplyPreview | null 
   ) => void;
   uploadFile: (file: File) => Promise<string>;
   roomId?: string;
-
-  // ✅ ADD — nhận từ ChatContainer
   replyingMessage?: ReplyPreview | null;
   clearReply?: () => void;
 }

@@ -14,7 +14,7 @@ export class UploadController {
   @UseInterceptors(
     FileInterceptor("file", {
       storage: diskStorage({
-        destination: path.join(process.cwd(), "actions/uploads"),
+        destination: path.join(process.cwd(), "uploads"),
         filename: (_, file, cb) => {
           const unique = Date.now() + "-" + file.originalname;
           cb(null, unique);

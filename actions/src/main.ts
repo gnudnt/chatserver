@@ -20,7 +20,7 @@ async function bootstrap() {
 
   //  STATIC UPLOADS
   app.useStaticAssets(
-    path.join(__dirname, "../uploads"),
+  path.join(process.cwd(), "uploads"),
     { prefix: "/uploads" }
   );
 
@@ -34,7 +34,7 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup("docs", app, document);
 
-  const port = process.env.PORT || 8888;
+  const port = process.env.PORT || 3001;
   await app.listen(port);
 
   console.log(`🚀 Actions API running on http://localhost:${port}`);

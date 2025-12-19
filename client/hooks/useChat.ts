@@ -41,7 +41,7 @@ export function useChat(userId?: string | null) {
   const socketRef = useRef<Socket | null>(null);
   const currentRoom = useRef<string>("");
 
-  // 🔵 Tạo socket chung
+  //  Tạo socket chung
   useEffect(() => {
     if (!socketRef.current) {
       socketRef.current = getSocket();
@@ -60,7 +60,7 @@ export function useChat(userId?: string | null) {
       setMessages(msgs);
     });
 
-    // ⭐ TRÁNH TRÙNG TIN
+    // TRÁNH TRÙNG TIN
     socket.on("receiveMessage", (msg: Message) => {
       if (msg.roomId !== currentRoom.current) return;
 
@@ -77,7 +77,7 @@ export function useChat(userId?: string | null) {
       );
     });
 
-    // 📌 REALTIME PIN — chỉ 1 tin
+    // REALTIME PIN — 1 tin
 socket.on("messagePinned", ({ messageId, pinnedBy, pinnedAt }) => {
   setMessages((prev) =>
     prev.map((m) =>
@@ -99,7 +99,7 @@ socket.on("messageUnpinned", ({ messageId }) => {
 });
 
 
-    // ⭐⭐⭐ REALTIME ĐÃ XEM
+    // realtime seen
     socket.on("messagesRead", ({ roomId, userId: reader }) => {
       if (roomId !== currentRoom.current) return;
 
@@ -130,7 +130,7 @@ socket.off("messageUnpinned");
     };
   }, []);
 
-  // 🔵 Đăng ký user
+  //  Đăng ký user
   useEffect(() => {
     const socket = socketRef.current;
     if (!socket || !userId) return;
@@ -142,7 +142,7 @@ socket.off("messageUnpinned");
     }
   }, [userId]);
 
-  // 🔵 Join room
+  //  Join room
   const joinRoom = useCallback((roomId: string) => {
     const socket = socketRef.current;
     if (!socket || !roomId) return;
@@ -151,7 +151,7 @@ socket.off("messageUnpinned");
     socket.emit("joinRoom", roomId);
   }, []);
 
-  // 🔵 Gửi tin nhắn
+  //  SEND MESSAGE
   const sendMessage = useCallback(
     (content: string, images?: string[], fileUrl?: string, replyTo?: ReplyPreview | null) => {
       const socket = socketRef.current;
@@ -168,7 +168,7 @@ socket.off("messageUnpinned");
         replyTo: replyTo ?? null,
       });
 
-      // ⭐ Khi gửi xong → stopTyping
+      // sendMessage → stopTyping
       socket.emit("stopTyping", {
         roomId: currentRoom.current,
         userId,
@@ -177,7 +177,7 @@ socket.off("messageUnpinned");
     [userId]
   );
 
-  // Gửi reaction
+  // send reaction
   const sendReaction = useCallback(
     (messageId: string, type: string) => {
       const socket = socketRef.current;
@@ -220,24 +220,27 @@ socket.off("messageUnpinned");
     [userId]
   );
 
-  // 🔵 Upload file
-  const uploadFile = useCallback(async (file: File): Promise<string> => {
-    const formData = new FormData();
-    formData.append("file", file);
+  // Upload file
+const uploadFile = useCallback(async (file: File): Promise<string> => {
+  const ACTIONS_URL = process.env.NEXT_PUBLIC_ACTIONS_URL!;
+  
+  const formData = new FormData();
+  formData.append("file", file);
 
-    const res = await fetch("http://localhost:4000/api/upload", {
-      method: "POST",
-      body: formData,
-    });
+  const res = await fetch(`${ACTIONS_URL}/api/upload`, {
+    method: "POST",
+    body: formData,
+  });
 
-    const data = await res.json();
+  const data = await res.json();
 
-    if (!res.ok || !data?.url) {
-      throw new Error(data?.error || "Upload failed");
-    }
+  if (!res.ok || !data?.url) {
+    throw new Error(data?.error || "Upload failed");
+  }
 
-    return `http://localhost:4000${data.url}`;
-  }, []);
+  // data.url = "/uploads/ten-file.png"
+  return `${ACTIONS_URL}${data.url}`;
+}, []);
 
   return {
     messages,
@@ -246,8 +249,6 @@ socket.off("messageUnpinned");
     sendMessage,
     sendReaction,
     uploadFile,
-
-    // ⭐⭐ EXPORT TYPING API
     sendTyping,
     sendStopTyping,
   };

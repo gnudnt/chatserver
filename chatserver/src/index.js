@@ -58,10 +58,12 @@ io.on("connection", (socket) => {
 
     userActiveRoom.set(socket.id, roomId);
 
-    const messages = await MessageModel.find({ roomId })
-      .sort({ createdAt: 1 })
-      .limit(100)
-      .lean();
+    const messages = await MessageModel.aggregate([
+      { $match: { roomId } },
+      { $sort: { createdAt: -1 } },
+      { $limit: 100 },
+      { $sort: { createdAt: 1 } },
+    ])
 
     socket.emit("loadMessages", messages);
   });
@@ -93,7 +95,7 @@ io.on("connection", (socket) => {
         }
       });
 
-      // auto-read nếu user đang active room
+      // auto-read if user active room
       const readers = [];
       for (const user of members) {
         if (user === msg.userId) continue;
@@ -131,7 +133,7 @@ io.on("connection", (socket) => {
         { upsert: true, new: true }
       );
 
-      // update sidebar theo từng member
+      // update sidebar member
       members.forEach((m) => {
         io.to(m).emit("conversationUpdated", {
           ...conversation.toObject(),

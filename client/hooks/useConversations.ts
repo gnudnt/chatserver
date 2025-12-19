@@ -23,11 +23,11 @@ export function useConversations(currentUser: string, activeRoom: string | null)
     socket.emit("registerUser", currentUser);
   }, [currentUser]);
 
-  // LOAD FROM BACKEND — SORT MẶC ĐỊNH THEO updatedAt
+  // LOAD FROM BACKEND 
   useEffect(() => {
     if (!currentUser) return;
 
-    const ACTIONS_URL = process.env.NEXT_PUBLIC_ACTIONS_URL || "http://localhost:8888";
+const ACTIONS_URL = process.env.NEXT_PUBLIC_ACTIONS_URL!;
     fetch(`${ACTIONS_URL}/api/conversations?userId=${currentUser}`)
       .then((res) => {
         if (!res.ok) throw new Error("API error");
@@ -48,12 +48,10 @@ export function useConversations(currentUser: string, activeRoom: string | null)
       })
       .catch((err) => {
         setConversations([]);
-        // Optional: log error
-        // console.error("Failed to fetch conversations", err);
       });
   }, [currentUser]);
 
-  // LISTEN REALTIME UPDATES — SORT CHỈ KHI CÓ TIN NHẮN MỚI
+  // LISTEN REALTIME UPDATES 
   useEffect(() => {
     const handleUpdate = (data: any) => {
       setConversations((prev) => {
@@ -61,7 +59,7 @@ export function useConversations(currentUser: string, activeRoom: string | null)
         let updated;
 
         if (exists) {
-          const isNewMessage = exists.lastMessage !== data.lastMessage; // ⭐ CHECK TIN NHẮN MỚI
+          const isNewMessage = exists.lastMessage !== data.lastMessage; //  CHECK TIN NHẮN MỚI
 
           updated = prev.map((c) =>
             c.roomId === data.roomId
@@ -74,8 +72,6 @@ export function useConversations(currentUser: string, activeRoom: string | null)
                 }
               : c
           );
-
-          // ⭐⭐⭐ CHỈ SORT NẾU CÓ TIN NHẮN MỚI
           if (isNewMessage) {
             return updated.sort(
               (a, b) =>
@@ -84,10 +80,10 @@ export function useConversations(currentUser: string, activeRoom: string | null)
             );
           }
 
-          return updated; // ❌ KHÔNG SORT KHI CLICK HOẶC MARK AS READ
+          return updated;
         }
 
-        // ⭐ Conversation mới xuất hiện → Luôn đưa lên đầu
+        //  Conversation 
         updated = [
           {
             ...data,
@@ -108,7 +104,7 @@ export function useConversations(currentUser: string, activeRoom: string | null)
     return () => socket.off("conversationUpdated", handleUpdate);
   }, [activeRoom]);
 
-  // RESET UNREAD KHI MỞ PHÒNG — KHÔNG SORT
+  // RESET UNREAD 
   useEffect(() => {
     if (!activeRoom) return;
 
